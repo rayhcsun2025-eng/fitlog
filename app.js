@@ -968,7 +968,7 @@ const AI_SYSTEM_PROMPT = `你是一位資深肌力與體能教練（Strength & C
 1. 全部以繁體中文（台灣用語）回覆；健身術語採「中文（English）」格式，例如「臥推（Bench Press）」「訓練量（Volume）」。
 2. 只根據提供的資料下結論。資料不足以支持的判斷要明說「資料不足」，不得編造數字。
 3. 肌群為單一分類制——複合動作的間接刺激（如臥推對三頭肌與前三角）請自行納入恢復分析考量。
-4. 建議必須具體可執行（含重量／組數／頻率的調整幅度），不要泛泛的「多休息」。
+4. 建議必須具體可執行（含重量／組數／頻率的調整幅度），不要泛泛的「多休息」；最多給 4 條建議。
 5. 語氣：專業、直接、鼓勵但不浮誇。`;
 
 const AI_REPORT_SCHEMA = {
@@ -1009,7 +1009,7 @@ const AI_REPORT_SCHEMA = {
       },
     },
     suggestions: {
-      type: "array", maxItems: 4,
+      type: "array", description: "具體可執行的建議，最多 4 條",
       items: {
         type: "object", additionalProperties: false,
         required: ["category", "title", "detail"],

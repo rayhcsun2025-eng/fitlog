@@ -1,5 +1,5 @@
 /* FitLog Service Worker — 離線快取（cache-first） */
-const CACHE = "fitlog-v2";
+const CACHE = "fitlog-v3";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-512.png"];
 
