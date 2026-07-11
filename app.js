@@ -227,21 +227,25 @@ function startWorkout() {
 }
 function addExerciseToWorkout(workout, exercise) {
   const entry = { id: uid(), exerciseId: exercise.id, sets: [] };
+  // 已完成的訓練（補記錄）：加入的組直接標記完成，才會計入統計與 PR
+  const doneAt = workout.endTime || null;
   const last = lastPerformance(exercise.id, workout.id);
   if (last) {
     for (const p of last)
-      entry.sets.push({ id: uid(), weightKg: p.weightKg, reps: p.reps, setType: p.setType, completedAt: null, restSec: null });
+      entry.sets.push({ id: uid(), weightKg: p.weightKg, reps: p.reps, setType: p.setType, completedAt: doneAt, restSec: null });
   } else {
-    entry.sets.push({ id: uid(), weightKg: 0, reps: 0, setType: "working", completedAt: null, restSec: null });
+    entry.sets.push({ id: uid(), weightKg: 0, reps: 0, setType: "working", completedAt: doneAt, restSec: null });
   }
   workout.entries.push(entry);
   save();
 }
-function addSet(entry) {
+function addSet(entry, workout) {
   const last = entry.sets[entry.sets.length - 1];
   entry.sets.push({
     id: uid(), weightKg: last ? last.weightKg : 0, reps: last ? last.reps : 0,
-    setType: last ? last.setType : "working", completedAt: null, restSec: null,
+    setType: last ? last.setType : "working",
+    completedAt: workout && workout.endTime ? workout.endTime : null,
+    restSec: null,
   });
   save();
 }
@@ -395,6 +399,7 @@ function renderWorkouts() {
   $view.innerHTML = `
     <h1 class="page-title">訓練</h1>
     <button class="btn ${active ? "btn-card" : "btn-primary"}" id="startBtn">${active ? "▲ 回到訓練" : "＋ 開始訓練（Workout）"}</button>
+    <button class="btn btn-card" id="backfillBtn">🗓 補記錄過去的訓練</button>
     <h2 class="section-title">歷史紀錄（History）</h2>
     ${done.length ? done.map((w) => {
       const groups = [...new Set(w.entries.map((en) => exerciseById(en.exerciseId)?.muscleGroup).filter(Boolean))];
@@ -407,6 +412,7 @@ function renderWorkouts() {
     }).join("") : `<div class="empty"><span class="empty-icon">🏋️</span>還沒有訓練紀錄<br>點上方「開始訓練」記錄你的第一次。</div>`}`;
 
   document.getElementById("startBtn").onclick = () => { startWorkout(); openWorkoutOverlay(); };
+  document.getElementById("backfillBtn").onclick = openBackfillModal;
   $view.querySelectorAll("[data-workout]").forEach((el) => {
     el.onclick = () => openWorkoutDetail(el.dataset.workout);
   });
@@ -416,6 +422,7 @@ function renderWorkouts() {
 function openWorkoutDetail(id) {
   const w = db.workouts.find((x) => x.id === id);
   if (!w) return;
+  const durationMin = Math.max(1, Math.round((new Date(w.endTime) - new Date(w.startTime)) / 60000));
   $overlay.classList.remove("hidden");
   $overlay.innerHTML = `
     <div class="ov-header">
@@ -424,13 +431,41 @@ function openWorkoutDetail(id) {
       <button class="icon-btn danger" id="dDelete">刪除</button>
     </div>
     <div class="card">
-      <div class="form-row"><label>訓練時間（Duration）</label><span class="hint num">${fmtDuration(new Date(w.endTime) - new Date(w.startTime))}</span></div>
+      <div class="form-row"><label style="flex-shrink:0">日期時間</label>
+        <input class="form-input" type="datetime-local" id="dStart" style="max-width:62%"
+          value="${localDatetimeValue(w.startTime)}" max="${localDatetimeValue(new Date().toISOString())}"></div>
+      <div class="form-row"><label>訓練時間（Duration）</label>
+        <span style="display:flex;align-items:center;gap:6px">
+          <input class="form-input num" type="number" id="dDur" inputmode="numeric" style="width:72px;text-align:center" value="${durationMin}" min="1" max="600">
+          <span class="hint">分鐘</span></span></div>
       <div class="form-row"><label>總訓練量（Volume）</label><span class="hint num">${fmtVolume(volumeOf(w))}</span></div>
       <div class="form-row" style="border-bottom:none"><label>備註</label>
         <input class="form-input" id="dNote" style="max-width:60%" value="${esc(w.note || "")}" placeholder="寫點什麼…"></div>
     </div>
-    ${w.entries.map((en) => renderEntryCard(w, en, false)).join("")}`;
+    ${w.entries.map((en) => renderEntryCard(w, en, false)).join("")}
+    <button class="btn btn-card" id="dAddEx">＋ 新增動作（Exercise）</button>`;
 
+  const applyTime = () => {
+    const startVal = document.getElementById("dStart").value;
+    const dur = Math.max(1, parseInt(document.getElementById("dDur").value) || durationMin);
+    if (!startVal) return;
+    const start = new Date(startVal);
+    if (isNaN(start) || start > new Date()) return;
+    w.startTime = start.toISOString();
+    w.endTime = new Date(start.getTime() + dur * 60000).toISOString();
+    // 組完成時間跟著移到新的結束時間，保持資料一致
+    for (const en of w.entries)
+      for (const s of en.sets)
+        if (s.completedAt) s.completedAt = w.endTime;
+    save();
+  };
+  document.getElementById("dStart").onchange = () => { applyTime(); openWorkoutDetail(id); };
+  document.getElementById("dDur").onchange = () => { applyTime(); openWorkoutDetail(id); };
+
+  document.getElementById("dAddEx").onclick = () => openExercisePicker((ex) => {
+    addExerciseToWorkout(w, ex);
+    openWorkoutDetail(id);
+  });
   document.getElementById("dBack").onclick = () => { $overlay.classList.add("hidden"); renderTab(); };
   document.getElementById("dDelete").onclick = () => {
     if (confirm("刪除這次訓練？所有組數紀錄將一併刪除，PR 會自動重算。")) {
@@ -442,6 +477,58 @@ function openWorkoutDetail(id) {
   };
   document.getElementById("dNote").oninput = (e) => { w.note = e.target.value; save(); };
   bindEntryCards($overlay, w, false, () => openWorkoutDetail(id));
+}
+
+/* ----- 補記錄過去的訓練 ----- */
+function localDatetimeValue(iso) {
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function openBackfillModal() {
+  const yesterday = new Date(Date.now() - 86400000);
+  const p = (n) => String(n).padStart(2, "0");
+  const defaultDate = `${yesterday.getFullYear()}-${p(yesterday.getMonth() + 1)}-${p(yesterday.getDate())}`;
+  const today = new Date();
+  const maxDate = `${today.getFullYear()}-${p(today.getMonth() + 1)}-${p(today.getDate())}`;
+
+  $modal.classList.remove("hidden");
+  $modal.innerHTML = `<div class="modal-sheet">
+    <div class="ov-header" style="position:static;background:none;padding:0 0 8px">
+      <button class="icon-btn" id="bCancel">取消</button>
+      <span class="ov-title">補記錄訓練</span>
+      <button class="icon-btn accent" id="bCreate">建立</button>
+    </div>
+    <div class="form-row"><label>日期</label>
+      <input class="form-input" type="date" id="bDate" value="${defaultDate}" max="${maxDate}" style="max-width:56%"></div>
+    <div class="form-row"><label>開始時間</label>
+      <input class="form-input" type="time" id="bTime" value="18:00" style="max-width:56%"></div>
+    <div class="form-row" style="border-bottom:none"><label>訓練時長（分鐘）</label>
+      <input class="form-input num" type="number" id="bDur" inputmode="numeric" value="60" min="1" max="600" style="width:80px;text-align:center"></div>
+    <div style="color:var(--text-2);font-size:12.5px;line-height:1.7;padding:12px 0 4px">
+      建立後在詳情頁加入動作與組數——補的紀錄會計入統計、趨勢與 PR。</div>
+  </div>`;
+
+  document.getElementById("bCancel").onclick = () => $modal.classList.add("hidden");
+  document.getElementById("bCreate").onclick = () => {
+    const dateVal = document.getElementById("bDate").value;
+    const timeVal = document.getElementById("bTime").value || "18:00";
+    const dur = Math.max(1, parseInt(document.getElementById("bDur").value) || 60);
+    if (!dateVal) { alert("請選擇日期"); return; }
+    const start = new Date(`${dateVal}T${timeVal}`);
+    if (isNaN(start)) { alert("日期格式不正確"); return; }
+    if (start > new Date()) { alert("不能選未來的時間"); return; }
+    const w = {
+      id: uid(), startTime: start.toISOString(),
+      endTime: new Date(start.getTime() + dur * 60000).toISOString(),
+      note: "", entries: [],
+    };
+    db.workouts.push(w);
+    save();
+    $modal.classList.add("hidden");
+    openWorkoutDetail(w.id);
+  };
 }
 
 /* ----- 動作 Tab ----- */
@@ -715,7 +802,7 @@ function renderEntryCard(workout, entry, isActive) {
     <div class="ex-header">
       <span class="ex-name">${esc(ex?.nameZh || "（動作已刪除）")}<small>${esc(ex?.nameEn || "")}</small></span>
       ${ex ? `<span class="tag" style="color:${MUSCLE_GROUPS[ex.muscleGroup].color}">${MUSCLE_GROUPS[ex.muscleGroup].zh}</span>` : ""}
-      ${isActive ? `<button class="mini-del" data-action="remove-entry">✕</button>` : ""}
+      <button class="mini-del" data-action="remove-entry">✕</button>
     </div>
     ${entry.sets.map((s, i) => `
       <div class="set-row" data-set="${s.id}">
@@ -731,7 +818,7 @@ function renderEntryCard(workout, entry, isActive) {
         ${isActive ? `<button class="check-btn ${s.completedAt ? "done" : ""}" data-action="toggle">✓</button>` : ""}
         <button class="mini-del" data-action="del-set">−</button>
       </div>`).join("")}
-    ${isActive ? `<button class="btn-ghost btn" data-action="add-set" style="width:100%">＋ 加一組（Set）</button>` : ""}
+    <button class="btn-ghost btn" data-action="add-set" style="width:100%">＋ 加一組（Set）</button>
   </div>`;
 }
 
@@ -779,7 +866,7 @@ function bindEntryCards(container, workout, isActive, rerender) {
     });
 
     const addBtn = card.querySelector('[data-action="add-set"]');
-    if (addBtn) addBtn.onclick = () => { addSet(entry); rerender(); };
+    if (addBtn) addBtn.onclick = () => { addSet(entry, workout); rerender(); };
     const removeBtn = card.querySelector('[data-action="remove-entry"]');
     if (removeBtn) removeBtn.onclick = () => {
       if (confirm("移除這個動作？")) {
@@ -969,7 +1056,9 @@ const AI_SYSTEM_PROMPT = `你是一位資深肌力與體能教練（Strength & C
 2. 只根據提供的資料下結論。資料不足以支持的判斷要明說「資料不足」，不得編造數字。
 3. 肌群為單一分類制——複合動作的間接刺激（如臥推對三頭肌與前三角）請自行納入恢復分析考量。
 4. 建議必須具體可執行（含重量／組數／頻率的調整幅度），不要泛泛的「多休息」；最多給 4 條建議。
-5. 語氣：專業、直接、鼓勵但不浮誇。`;
+5. 語氣：專業、直接、鼓勵但不浮誇。
+
+資料說明：trend_weeks 是最近最多 12 週的逐週彙總（由舊到新）、key_exercises.weekly_best_e1rm_kg 是該動作逐週最佳估算 1RM（0 代表該週未練）、all_time_* 是歷史最佳。請善用這些長期資料：在訓練量與漸進超負荷分析中明確判斷長期趨勢——是持續進步、平台期（連續 3 週以上無提升）還是倒退——並引用具體數字與週數；本週表現也要對照歷史最佳來評價。`;
 
 const AI_REPORT_SCHEMA = {
   type: "object", additionalProperties: false,
@@ -1040,6 +1129,14 @@ function buildWeeklyPayload(refDate) {
   const prevW = workoutsInWeek(new Date(ws.getTime() - 86400000));
   const prevDist = Object.fromEntries(muscleDistribution(prevW).map((d) => [d.group, d.volumeKg]));
 
+  // 趨勢涵蓋範圍：最多 12 週，從第一次訓練那週起算（避免前面一堆無意義的 0）
+  const firstDate = completedWorkouts().map((w) => new Date(w.startTime)).sort((a, b) => a - b)[0];
+  let span = 12;
+  if (firstDate) {
+    const diffWeeks = Math.round((ws - weekStartOf(firstDate)) / (7 * 86400000)) + 1;
+    span = Math.max(1, Math.min(12, diffWeeks));
+  }
+
   // 肌群彙總
   const groupAgg = {};
   const moveAgg = { push: 0, pull: 0, squat: 0, hinge: 0 };
@@ -1072,7 +1169,7 @@ function buildWeeklyPayload(refDate) {
     for (const item of list.slice(0, 2)) {
       const top = item.sets.reduce((m, s) => (s.weightKg > m.weightKg ? s : m), item.sets[0]);
       const trend = [];
-      for (let i = 3; i >= 0; i--) {
+      for (let i = span - 1; i >= 0; i--) {
         const ref = new Date(refDate); ref.setDate(ref.getDate() - i * 7);
         let best = 0;
         for (const w of workoutsInWeek(ref))
@@ -1091,19 +1188,23 @@ function buildWeeklyPayload(refDate) {
       }
       const newPr = before.length > 0 && (maxWeight(item.sets) || 0) > (maxWeight(before) || 0);
       const e1 = epley(top.weightKg, top.reps);
+      const allTime = allSetsOf(item.ex.id, null);
       keyExercises.push({
         name_zh: item.ex.nameZh, name_en: item.ex.nameEn,
         muscle_group: item.ex.muscleGroup, movement_pattern: item.ex.movementPattern,
         top_set: { weight_kg: top.weightKg, reps: top.reps },
         estimated_1rm_kg: e1 != null ? round1(e1) : null,
-        trend_4w: trend, new_pr: newPr,
+        weekly_best_e1rm_kg: trend,
+        all_time_max_weight_kg: round1(maxWeight(allTime) || 0),
+        all_time_best_e1rm_kg: round1(bestE1RM(allTime) || 0),
+        new_pr: newPr,
       });
     }
   }
 
-  // 近四週趨勢
+  // 逐週趨勢（最多 12 週，最舊到最新）
   const t = { vol: [], cnt: [], dur: [] };
-  for (let i = 3; i >= 0; i--) {
+  for (let i = span - 1; i >= 0; i--) {
     const ref = new Date(refDate); ref.setDate(ref.getDate() - i * 7);
     const list = workoutsInWeek(ref);
     t.vol.push(Math.round(list.reduce((a, w) => a + volumeOf(w), 0)));
@@ -1111,10 +1212,8 @@ function buildWeeklyPayload(refDate) {
     t.dur.push(Math.round(list.reduce((a, w) => a + (new Date(w.endTime) - new Date(w.startTime)), 0) / 60000));
   }
 
-  const firstDate = completedWorkouts().map((w) => new Date(w.startTime)).sort((a, b) => a - b)[0];
-
   return {
-    schema_version: 1,
+    schema_version: 2,
     week_start: isoDate(ws),
     user_summary: {
       preferred_unit: db.settings.unit,
@@ -1122,8 +1221,8 @@ function buildWeeklyPayload(refDate) {
     },
     weekly_summary: {
       workout_count: weekW.length,
-      total_duration_min: t.dur[3],
-      total_volume_kg: t.vol[3],
+      total_duration_min: t.dur[t.dur.length - 1],
+      total_volume_kg: t.vol[t.vol.length - 1],
       cardio_sessions: 0,
       cardio_duration_min: 0,
     },
@@ -1147,7 +1246,12 @@ function buildWeeklyPayload(refDate) {
     key_exercises: keyExercises,
     prs_this_week: keyExercises.filter((k) => k.new_pr)
       .map((k) => ({ name_en: k.name_en, type: "maxWeight", value_kg: k.top_set.weight_kg })),
-    trend_4w: { weekly_volume_kg: t.vol, weekly_workout_count: t.cnt, weekly_duration_min: t.dur },
+    trend_weeks: {
+      weeks_included: span,
+      weekly_volume_kg: t.vol,
+      weekly_workout_count: t.cnt,
+      weekly_duration_min: t.dur,
+    },
   };
 }
 
@@ -1341,5 +1445,9 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 }
 
 /* ----- 啟動 ----- */
+// 要求瀏覽器把本站資料標記為「持久儲存」，降低系統自動清除 localStorage 的機率
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist().catch(() => {});
+}
 renderTab();
 renderMiniBar();
