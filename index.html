@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>FitLog — 健身紀錄</title>
+  <meta name="theme-color" content="#0D0D0F">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FitLog">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="view"></main>
+
+  <!-- 迷你列（Mini Workout Bar） -->
+  <div id="miniBar" class="mini-bar hidden"></div>
+
+  <!-- Tab Bar -->
+  <nav class="tabbar">
+    <button class="tab active" data-tab="dashboard"><span class="tab-icon">📊</span>總覽</button>
+    <button class="tab" data-tab="workouts"><span class="tab-icon">🏋️</span>訓練</button>
+    <button class="tab" data-tab="exercises"><span class="tab-icon">📋</span>動作</button>
+    <button class="tab" data-tab="settings"><span class="tab-icon">⚙️</span>設定</button>
+  </nav>
+
+  <!-- 詳情覆蓋層（歷史/動作詳情） -->
+  <div id="overlay" class="overlay hidden"></div>
+
+  <!-- 進行中訓練（Active Workout）覆蓋層 -->
+  <div id="workoutOverlay" class="overlay workout-overlay hidden"></div>
+
+  <!-- Sheet Modal（動作選擇器/編輯器） -->
+  <div id="modal" class="modal-backdrop hidden"></div>
+
+  <!-- PR / 提示 Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

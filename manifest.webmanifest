@@ -1,0 +1,15 @@
+{
+  "name": "FitLog — 健身紀錄",
+  "short_name": "FitLog",
+  "description": "個人健身紀錄：快速記錄、PR 偵測、趨勢統計",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0D0D0F",
+  "theme_color": "#0D0D0F",
+  "icons": [
+    { "src": "icons/icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
