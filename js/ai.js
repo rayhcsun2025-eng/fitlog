@@ -49,15 +49,19 @@ window.FL = window.FL || {};
     if (!apiKey()) throw new Error("請先輸入 API Key");
     await claudeFetch({ model: "claude-haiku-4-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] });
   }
-  async function structured(system, userText, schema, model) {
+  async function structured(system, userText, schema, model, maxTokens) {
     const json = await claudeFetch({
-      model: model || FL.db.settings.model, max_tokens: 4096, system,
+      model: model || FL.db.settings.model, max_tokens: maxTokens || 8192, system,
       output_config: { format: { type: "json_schema", schema } },
       messages: [{ role: "user", content: userText }],
     });
     const text = (json.content || []).find((b) => b.type === "text")?.text;
     if (!text) throw new Error("回應格式異常，請重試");
-    return { content: JSON.parse(text), usage: json.usage || {} };
+    if (json.stop_reason === "max_tokens") throw new Error("回應過長被截斷，請縮短時間或減少肌群後重試");
+    let parsed;
+    try { parsed = JSON.parse(text); }
+    catch (_) { throw new Error("AI 回應格式異常，請再試一次"); }
+    return { content: parsed, usage: json.usage || {} };
   }
 
   // ---- 偏好學習（Preference Profile）----
@@ -139,7 +143,8 @@ window.FL = window.FL || {};
 6. 課表動作數與組數要符合使用者給的時間（30/45/60/90 分鐘，組間休息假設 90 秒）。
 7. 判斷漸進超負荷（progression_note）：對常練動作給「加重/加次/維持/減量(Deload)」的方向。
 8. 若使用者自由文字提到不適（如肩膀痛），必須在 warnings 說明並避開相關動作。
-9. 語氣：專業、直接、可執行。`;
+9. 語氣：專業、直接、可執行。
+10. 精簡：每個 rationale 與 alternative.reason 控制在一句話（約 30 字內）；動作數配合時間（30分約3-4個、45分約4-5個、60分約5-6個、90分約6-8個），不要過多。`;
 
   const PLANNER_SCHEMA = {
     type: "object", additionalProperties: false,
