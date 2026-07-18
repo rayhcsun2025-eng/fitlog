@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>FitLog — AI 健身教練</title>
-  <meta name="theme-color" content="#0D0D0F">
+  <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FitLog">
@@ -18,11 +18,16 @@
   <div id="miniBar" class="mini-bar hidden"></div>
 
   <nav class="tabbar">
-    <button class="tab active" data-tab="dashboard"><span class="tab-icon">📊</span>總覽</button>
-    <button class="tab" data-tab="calendar"><span class="tab-icon">🗓</span>日曆</button>
-    <button class="tab" data-tab="workouts"><span class="tab-icon">🏋️</span>訓練</button>
-    <button class="tab" data-tab="coach"><span class="tab-icon">✦</span>AI 教練</button>
-    <button class="tab" data-tab="more"><span class="tab-icon">⋯</span>更多</button>
+    <button class="tab active" data-tab="dashboard">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 20v-9M12 20V4.5M19 20v-5.5"/></svg></span>總覽</button>
+    <button class="tab" data-tab="calendar">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 9.5h17M8 3v3.5M16 3v3.5"/></svg></span>日曆</button>
+    <button class="tab" data-tab="workouts">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M7 7.5v9M17 7.5v9M3.5 10v4M20.5 10v4M7 12h10"/></svg></span>訓練</button>
+    <button class="tab" data-tab="coach">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l1.9 5.4 5.6 1.6-5.6 1.6L12 17.5l-1.9-5.4-5.6-1.6 5.6-1.6L12 3.5z"/><path d="M18.5 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z"/></svg></span>AI 教練</button>
+    <button class="tab" data-tab="more">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></span>更多</button>
   </nav>
 
   <div id="overlay" class="overlay hidden"></div>
