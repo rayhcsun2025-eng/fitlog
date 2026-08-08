@@ -9,7 +9,7 @@ window.FL = window.FL || {};
 
 (function (FL) {
   const STORAGE_KEY = "fitlog.v1"; // 沿用同一鍵 → 就地升級、零遷移風險
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
   const LB_PER_KG = 2.2046226218;
 
   // ---- 常數表 ----
@@ -139,7 +139,10 @@ window.FL = window.FL || {};
     let data = null;
     try { data = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (_) {}
     if (!data) {
-      data = { schemaVersion: SCHEMA_VERSION, exercises: [], workouts: [], reports: [], plans: [], settings: {} };
+      data = {
+        schemaVersion: SCHEMA_VERSION, exercises: [], workouts: [], reports: [], plans: [],
+        bodyRecords: [], bodyAnalyses: [], settings: {},
+      };
       data.exercises = SEED.map((r) => seedExercise(r));
     }
     data = migrate(data);
@@ -153,6 +156,8 @@ window.FL = window.FL || {};
     data.workouts = data.workouts || [];
     data.reports = data.reports || [];
     data.plans = data.plans || [];
+    data.bodyRecords = data.bodyRecords || [];
+    data.bodyAnalyses = data.bodyAnalyses || [];
     data.settings = data.settings || {};
     const from = data.schemaVersion || 1;
 
@@ -201,8 +206,34 @@ window.FL = window.FL || {};
       data.settings.preferenceProfile = data.settings.preferenceProfile || {};
     }
 
+    if (from < 3) {
+      // v3：加入雙 AI、安全 gateway、今日狀態與身體目標。舊欄位一律保留。
+      data.bodyRecords = data.bodyRecords || [];
+      data.bodyAnalyses = data.bodyAnalyses || [];
+      data.settings.aiProvider = data.settings.aiProvider || "auto";
+      data.settings.openaiModel = data.settings.openaiModel || "gpt-5.6-luna";
+      data.settings.openaiVisionModel = data.settings.openaiVisionModel || "gpt-5.6-terra";
+      data.settings.anthropicModel = data.settings.anthropicModel || data.settings.model || "claude-sonnet-5";
+      data.settings.aiGatewayUrl = data.settings.aiGatewayUrl || "/api/ai";
+      data.settings.aiGatewayToken = data.settings.aiGatewayToken || "";
+      data.settings.todayCheckins = data.settings.todayCheckins || {};
+      data.settings.bodyGoal = data.settings.bodyGoal || {
+        type: "recomposition", targetWeightKg: null, targetBodyFatPct: null,
+        targetMuscleKg: null, targetDate: null,
+      };
+    }
+
     data.settings = Object.assign(
-      { unit: "kg", restSeconds: 90, apiKey: "", model: "claude-sonnet-5", defaultGoal: "hypertrophy" },
+      {
+        unit: "kg", restSeconds: 90, apiKey: "", model: "claude-sonnet-5",
+        defaultGoal: "hypertrophy", aiProvider: "auto",
+        openaiModel: "gpt-5.6-luna", openaiVisionModel: "gpt-5.6-terra",
+        anthropicModel: "claude-sonnet-5", aiGatewayUrl: "/api/ai", aiGatewayToken: "",
+        todayCheckins: {}, bodyGoal: {
+          type: "recomposition", targetWeightKg: null, targetBodyFatPct: null,
+          targetMuscleKg: null, targetDate: null,
+        },
+      },
       data.settings
     );
     data.schemaVersion = SCHEMA_VERSION;
@@ -216,7 +247,10 @@ window.FL = window.FL || {};
   // 匯出時排除 API Key（安全）
   function exportData() {
     const clone = JSON.parse(JSON.stringify(db));
-    if (clone.settings) delete clone.settings.apiKey;
+    if (clone.settings) {
+      delete clone.settings.apiKey;
+      delete clone.settings.aiGatewayToken;
+    }
     return clone;
   }
 

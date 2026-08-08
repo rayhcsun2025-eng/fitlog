@@ -1,8 +1,8 @@
 /* FitLog Service Worker — 離線快取（cache-first） */
-const CACHE = "fitlog-v8";
+const CACHE = "fitlog-v9";
 const ASSETS = [
   "./", "./index.html", "./styles.css", "./manifest.webmanifest",
-  "./js/data.js", "./js/stats.js", "./js/ai.js", "./js/ui.js", "./js/coach.js", "./js/main.js",
+  "./js/data.js", "./js/stats.js", "./js/ai.js", "./js/ui.js", "./js/coach.js", "./js/body.js", "./js/main.js",
   "./icons/icon-180.png", "./icons/icon-512.png",
 ];
 

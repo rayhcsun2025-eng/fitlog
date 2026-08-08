@@ -21,7 +21,7 @@ window.FL = window.FL || {};
     if (!form) form = defaultForm();
     const el = ui.els.view;
     el.innerHTML = `<h1 class="page-title">AI 教練</h1>
-      ${!FL.hasApiKey() ? `<div class="card" style="color:var(--text-2);font-size:13px;line-height:1.7">尚未設定 API Key——到「更多 → AI 設定」貼上你的 Claude API Key 即可使用排課與分析。</div>` : ""}
+      ${!FL.hasApiKey() ? `<div class="card" style="color:var(--text-2);font-size:13px;line-height:1.7">尚未連接安全 AI Gateway——到「更多 → AI 設定」填入 Gateway URL 與存取碼，即可使用 Claude 或 OpenAI。</div>` : ""}
       <div class="card">
         <div class="coach-label">訓練時間</div>
         <div class="seg" id="cMin">${[30,45,60,90].map((m)=>`<button data-min="${m}" class="${form.minutes===m?"on":""}">${m}分</button>`).join("")}</div>
@@ -51,20 +51,20 @@ window.FL = window.FL || {};
   };
 
   async function generatePlan(btn) {
-    if (!FL.hasApiKey()) { alert("請先到「更多 → AI 設定」輸入 Claude API Key。"); return; }
+    if (!FL.hasApiKey()) { alert("請先到「更多 → AI 設定」完成安全 Gateway 設定。"); return; }
     if (form.muscleMode === "pick" && !form.groups.length) { alert("請至少選一個肌群，或改用「AI 決定」。"); return; }
     const input = { minutes: form.minutes, goal: form.goal, bodyState: form.bodyState, freeText: form.freeText,
       muscleMode: form.muscleMode === "pick" ? form.groups : "ai" };
     const orig = btn.textContent; btn.disabled = true; btn.textContent = "✦ 排課中…（約 20–40 秒）";
     try {
       const res = await FL.generatePlan(input);
-      openPlanResult(res.content, res.usage);
+      openPlanResult(res.content, res.usage, res);
     } catch (err) { alert(`排課失敗：${err.message}`); }
     finally { btn.disabled = false; btn.textContent = orig; }
   }
 
   // 課表結果（含換一個、一鍵建立）
-  function openPlanResult(plan, usage) {
+  function openPlanResult(plan, usage, meta) {
     // 每個動作的候選池 = [目前, ...替代]；swapIdx 追蹤
     const items = plan.exercises.map((ex) => {
       const pool = [{ exercise_id: ex.exercise_id, name_zh: ex.name_zh, name_en: ex.name_en, sets: ex.sets, reps: ex.reps, suggested_weight_kg: ex.suggested_weight_kg, rationale: ex.rationale }];
@@ -94,7 +94,7 @@ window.FL = window.FL || {};
         }).join("")}
         <button class="btn btn-primary" id="pCreate">＋ 一鍵建立今日 Workout</button>
         <button class="btn btn-card" id="pRegen">重新排課</button>
-        <div class="card" style="color:var(--text-2);font-size:12px">tokens ${(usage.input_tokens||0).toLocaleString()} in / ${(usage.output_tokens||0).toLocaleString()} out · 「換一個」不需再呼叫 AI</div>`;
+        <div class="card" style="color:var(--text-2);font-size:12px">${esc(meta?.provider||"AI")} · ${esc(FL.aiModelLabel(meta?.model))} · tokens ${(usage.input_tokens||0).toLocaleString()} in / ${(usage.output_tokens||0).toLocaleString()} out · 「換一個」不需再呼叫 AI</div>`;
       $("pBack").onclick = () => { el.classList.add("hidden"); ui.renderTab(); };
       $("pRegen").onclick = () => { el.classList.add("hidden"); ui.renderTab(); };
       $("pCreate").onclick = () => {
@@ -120,9 +120,9 @@ window.FL = window.FL || {};
     return `<h2 class="section-title">AI 教練分析（Weekly Report）</h2>
       <button class="btn btn-primary" id="aiGenNow">✦ 產生本週分析</button>
       <button class="btn btn-card" id="aiGenPrev">產生上週分析</button>
-      ${!FL.hasApiKey()?`<div class="card" style="margin-top:10px;color:var(--text-2);font-size:12.5px;line-height:1.7">尚未設定 API Key——到「更多 → AI 設定」貼上即可使用。</div>`:""}
+      ${!FL.hasApiKey()?`<div class="card" style="margin-top:10px;color:var(--text-2);font-size:12.5px;line-height:1.7">尚未連接安全 AI Gateway——到「更多 → AI 設定」完成連線即可使用。</div>`:""}
       ${reports.length?`<div style="margin-top:10px">`+reports.map((r)=>`<button class="list-item" data-report="${r.id}">
-        <div class="li-top"><span class="li-title">週報 ${r.weekStart}</span><span class="li-sub">${FL.CLAUDE_MODELS[r.model]?.short||r.model}</span></div>
+        <div class="li-top"><span class="li-title">週報 ${r.weekStart}</span><span class="li-sub">${FL.aiModelLabel(r.model)}</span></div>
         <div class="li-sub">${esc(r.content?.headline||"")}</div></button>`).join("")+`</div>`:""}`;
   };
   ui.bindAiReportSection = function (root) {
@@ -132,13 +132,13 @@ window.FL = window.FL || {};
   };
 
   async function genReport(refDate, btn) {
-    if (!FL.hasApiKey()) { alert("請先到「更多 → AI 設定」輸入 Claude API Key。"); return; }
+    if (!FL.hasApiKey()) { alert("請先到「更多 → AI 設定」完成安全 Gateway 設定。"); return; }
     const orig = btn.textContent; btn.disabled = true; btn.textContent = "✦ 分析中…（約 30 秒）";
     try {
       const res = await FL.generateWeeklyReport(refDate);
       FL.db.reports = FL.db.reports.filter((r)=>r.weekStart!==res.weekStart);
       const report = { id: uid(), weekStart: res.weekStart, generatedAt: new Date().toISOString(),
-        model: FL.db.settings.model, content: res.content, inputTokens: res.usage.input_tokens||0, outputTokens: res.usage.output_tokens||0 };
+        provider: res.provider, model: res.model, content: res.content, inputTokens: res.usage.input_tokens||0, outputTokens: res.usage.output_tokens||0 };
       FL.db.reports.push(report); save();
       openReport(report.id);
     } catch (err) { alert(`產生失敗：${err.message}`); }
@@ -183,7 +183,7 @@ window.FL = window.FL || {};
       <h2 class="section-title">下週建議（Next Week）</h2>
       ${(c.suggestions||[]).map((s)=>`<div class="card"><div class="rep-head"><span class="tag" style="color:var(--accent)">${catLabel[s.category]||s.category}</span>${esc(s.title)}</div>
         <p class="rep-text">${esc(s.detail)}</p></div>`).join("")}
-      <div class="card" style="color:var(--text-2);font-size:12px">模型 ${FL.CLAUDE_MODELS[r.model]?.short||r.model} · tokens ${r.inputTokens.toLocaleString()} in / ${r.outputTokens.toLocaleString()} out · ${new Date(r.generatedAt).toLocaleString("zh-TW")}</div>`;
+      <div class="card" style="color:var(--text-2);font-size:12px">${esc(r.provider||"AI")} · ${esc(FL.aiModelLabel(r.model))} · tokens ${(r.inputTokens||0).toLocaleString()} in / ${(r.outputTokens||0).toLocaleString()} out · ${new Date(r.generatedAt).toLocaleString("zh-TW")}</div>`;
     $("rBack").onclick = () => { el.classList.add("hidden"); ui.renderTab(); };
     $("rDel").onclick = () => { if (confirm("刪除這份週報？")) { FL.db.reports = FL.db.reports.filter((x)=>x.id!==id); save(); el.classList.add("hidden"); ui.renderTab(); } };
   }

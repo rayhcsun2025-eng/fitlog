@@ -1,7 +1,7 @@
 /* =====================================================================
-   FitLog v2 — AI 引擎（AI Coach）
-   Claude API 瀏覽器直連。排課、智慧重量、換動作（預先回傳、零額外呼叫）、
-   偏好學習、每週報告。所有 context 由本地資料組裝，Structured Output。
+   FitLog v3 — AI 引擎（AI Coach）
+   Claude / OpenAI 共用 AI 層。瀏覽器只呼叫自有 Serverless Gateway，
+   金鑰不進前端；支援文字、圖片與 Structured Output。
    ===================================================================== */
 "use strict";
 window.FL = window.FL || {};
@@ -12,31 +12,44 @@ window.FL = window.FL || {};
     "claude-opus-4-8":  { name: "Opus（最強）",   short: "Opus",   hint: "最深入的分析，每次約 NT$1–4。" },
     "claude-haiku-4-5": { name: "Haiku（最省）",  short: "Haiku",  hint: "最快最省，深度較淺，每次約 NT$0.2–0.8。" },
   };
+  const OPENAI_MODELS = {
+    "gpt-5.6-luna":  { name: "GPT-5.6 Luna（快速省用量）", short: "5.6 Luna" },
+    "gpt-5.6-terra": { name: "GPT-5.6 Terra（推薦）", short: "5.6 Terra" },
+    "gpt-5.6-sol":   { name: "GPT-5.6 Sol（最深入）", short: "5.6 Sol" },
+  };
+  const AI_PROVIDERS = {
+    auto: "自動選擇", openai: "OpenAI", anthropic: "Anthropic Claude",
+  };
 
-  // ---- API Client ----
-  function apiKey() { return (FL.db.settings.apiKey || "").trim(); }
-  function headers() {
-    return {
-      "content-type": "application/json",
-      "x-api-key": apiKey(),
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    };
+  // ---- 安全 Gateway Client ----
+  function gatewayUrl() { return (FL.db.settings.aiGatewayUrl || "/api/ai").trim(); }
+  function gatewayToken() { return (FL.db.settings.aiGatewayToken || "").trim(); }
+  function selectedProvider() { return FL.db.settings.aiProvider || "auto"; }
+  function selectedModel(provider, mode) {
+    if (provider === "openai") return mode === "vision"
+      ? FL.db.settings.openaiVisionModel : FL.db.settings.openaiModel;
+    if (provider === "anthropic") return FL.db.settings.anthropicModel || FL.db.settings.model;
+    return null;
   }
-  async function claudeFetch(body) {
-    let lastErr = "Claude 服務暫時無法使用，請稍後再試";
+  async function gatewayFetch(payload) {
+    if (!gatewayUrl()) throw new Error("請先設定 AI Gateway URL");
+    if (!gatewayToken()) throw new Error("請先設定 Gateway 存取碼");
+    let lastErr = "AI 服務暫時無法使用，請稍後再試";
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt) await new Promise((r) => setTimeout(r, 2000 * attempt));
       let res;
       try {
-        res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST", headers: headers(), body: JSON.stringify(body),
+        res = await fetch(gatewayUrl(), {
+          method: "POST",
+          headers: { "content-type": "application/json", "authorization": `Bearer ${gatewayToken()}` },
+          body: JSON.stringify(payload),
         });
       } catch (_) { lastErr = "網路連線失敗，請確認網路後重試"; continue; }
       if (res.ok) return res.json();
-      if (res.status === 401) throw new Error("API Key 無效，請重新確認");
+      if (res.status === 401 || res.status === 403) throw new Error("Gateway 存取碼無效");
+      if (res.status === 413) throw new Error("照片容量過大，請減少照片後重試");
       if (res.status === 429 || res.status >= 500) {
-        lastErr = res.status === 429 ? "請求過於頻繁，請稍後再試" : `Claude 服務暫時無法使用（${res.status}）`;
+        lastErr = res.status === 429 ? "請求過於頻繁，請稍後再試" : `AI 服務暫時無法使用（${res.status}）`;
         continue;
       }
       let msg = `HTTP ${res.status}`;
@@ -46,22 +59,21 @@ window.FL = window.FL || {};
     throw new Error(lastErr);
   }
   async function testKey() {
-    if (!apiKey()) throw new Error("請先輸入 API Key");
-    await claudeFetch({ model: "claude-haiku-4-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] });
+    const provider = selectedProvider("text");
+    return gatewayFetch({ operation: "test", provider, model: selectedModel(provider, "text") });
   }
-  async function structured(system, userText, schema, model, maxTokens) {
-    const json = await claudeFetch({
-      model: model || FL.db.settings.model, max_tokens: maxTokens || 8192, system,
-      output_config: { format: { type: "json_schema", schema } },
-      messages: [{ role: "user", content: userText }],
+  async function structured(system, userText, schema, model, maxTokens, options) {
+    const opts = options || {};
+    const mode = opts.images && opts.images.length ? "vision" : "text";
+    const provider = opts.provider || selectedProvider(mode);
+    const json = await gatewayFetch({
+      operation: "structured", provider,
+      model: model || selectedModel(provider, mode),
+      mode, system, input: userText, schema,
+      images: opts.images || [], maxOutputTokens: maxTokens || 8192,
     });
-    const text = (json.content || []).find((b) => b.type === "text")?.text;
-    if (!text) throw new Error("回應格式異常，請重試");
-    if (json.stop_reason === "max_tokens") throw new Error("回應過長被截斷，請縮短時間或減少肌群後重試");
-    let parsed;
-    try { parsed = JSON.parse(text); }
-    catch (_) { throw new Error("AI 回應格式異常，請再試一次"); }
-    return { content: parsed, usage: json.usage || {} };
+    if (!json.content || typeof json.content !== "object") throw new Error("AI 回應格式異常，請再試一次");
+    return { content: json.content, usage: json.usage || {}, provider: json.provider || provider, model: json.model || model };
   }
 
   // ---- 偏好學習（Preference Profile）----
@@ -373,13 +385,15 @@ window.FL = window.FL || {};
     if (!payload.weekly_summary.workout_count) throw new Error("這一週沒有訓練紀錄，無法分析。");
     const user = `以下是 ${payload.week_start} 起始週的訓練資料：\n${JSON.stringify(payload)}`;
     const res = await structured(REPORT_SYSTEM, user, REPORT_SCHEMA);
-    return { weekStart: payload.week_start, content: res.content, usage: res.usage };
+    return { weekStart: payload.week_start, content: res.content, usage: res.usage, provider: res.provider, model: res.model };
   }
 
   Object.assign(FL, {
-    CLAUDE_MODELS, testKey, structured,
+    CLAUDE_MODELS, OPENAI_MODELS, AI_PROVIDERS, testKey, structured,
     updatePreferenceProfile, availableEquipment, candidateExercises, recentContext,
     generatePlan, buildWeeklyPayload, generateWeeklyReport,
-    hasApiKey: () => !!apiKey(),
+    gatewayUrl, selectedProvider, selectedModel,
+    hasApiKey: () => !!gatewayUrl() && !!gatewayToken(),
+    aiModelLabel: (id) => OPENAI_MODELS[id]?.short || CLAUDE_MODELS[id]?.short || id || "Auto",
   });
 })(window.FL);

@@ -1,13 +1,13 @@
 {
-  "name": "FitLog — 健身紀錄",
+  "name": "FitLog — Performance OS",
   "short_name": "FitLog",
-  "description": "個人健身紀錄：快速記錄、PR 偵測、趨勢統計",
+  "description": "AI 訓練中控台、身體組成與進度分析",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#05080d",
+  "theme_color": "#05080d",
   "icons": [
     { "src": "icons/icon-180.png", "sizes": "180x180", "type": "image/png" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }

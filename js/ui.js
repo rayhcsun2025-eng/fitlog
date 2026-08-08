@@ -31,6 +31,7 @@ window.FL = window.FL || {};
     else if (t === "calendar") renderCalendar();
     else if (t === "workouts") renderWorkouts();
     else if (t === "coach") ui.renderCoach ? ui.renderCoach() : (els.view.innerHTML = "");
+    else if (t === "body") ui.renderBody ? ui.renderBody() : (els.view.innerHTML = "");
     else if (t === "more") renderMore();
     ui.renderMiniBar();
   };
@@ -44,6 +45,11 @@ window.FL = window.FL || {};
   };
   ui.closeOverlay = function () { els.overlay.classList.add("hidden"); ui.renderTab(); };
   ui.closeModal = function () { els.modal.classList.add("hidden"); };
+  ui.activateTab = function (tab) {
+    ui.currentTab = tab;
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    ui.renderTab();
+  };
 
   function groupLabel(g) { const m = MUSCLE_GROUPS[g]; return m ? `${m.zh}（${m.en}）` : g; }
   function muscleTag(g, compact) {
@@ -54,27 +60,56 @@ window.FL = window.FL || {};
   /* =================== 總覽 Dashboard =================== */
   function renderDashboard() {
     const done = FL.completedWorkouts();
-    let html = `<h1 class="page-title">總覽</h1>`;
-    if (!done.length) {
-      html += `<div class="empty"><span class="empty-icon">📊</span>還沒有資料<br>完成第一次訓練後，這裡會顯示週統計、趨勢與 AI 分析。</div>`;
-      els.view.innerHTML = html;
-      return;
-    }
     const s = FL.weekSummary(new Date());
     const trend = FL.weeklyTrend(4, new Date());
     const dist = FL.muscleDistribution(FL.workoutsInDays(28));
     const maxVol = Math.max(...trend.map((t) => t.volume), 1);
     const distTotal = dist.reduce((a, d) => a + d.volume, 0) || 1;
+    const todayKey = FL.localDateKey(new Date().toISOString());
+    const checkins = FL.db.settings.todayCheckins || (FL.db.settings.todayCheckins = {});
+    const checkin = checkins[todayKey] || { sleep: 7, energy: 3, soreness: 2 };
+    const readiness = Math.max(20, Math.min(100, Math.round(35 + checkin.sleep * 4 + checkin.energy * 7 - checkin.soreness * 5)));
+    const readinessLabel = readiness >= 82 ? "狀態高峰" : readiness >= 65 ? "準備就緒" : readiness >= 48 ? "建議降量" : "優先恢復";
+    const latestBody = [...(FL.db.bodyRecords || [])].sort((a,b)=>b.date.localeCompare(a.date))[0];
+    const active = FL.db.workouts.find((w) => !w.endTime);
+    const last = [...done].sort((a,b)=>new Date(b.startTime)-new Date(a.startTime))[0];
+    const streakDates = new Set(done.map((w)=>FL.localDateKey(w.startTime)));
+    let streak = 0, cursor = new Date();
+    if (!streakDates.has(FL.localDateKey(cursor.toISOString()))) cursor.setDate(cursor.getDate()-1);
+    while (streakDates.has(FL.localDateKey(cursor.toISOString()))) { streak++; cursor.setDate(cursor.getDate()-1); }
+    const dateText = new Date().toLocaleDateString("zh-TW", { month:"long", day:"numeric", weekday:"long" });
 
-    html += `
-      <h2 class="section-title" style="margin-top:0">本週</h2>
+    let html = `<div class="page-kicker">FITLOG PERFORMANCE OS</div>
+      <div class="dashboard-head"><div><h1 class="page-title">今日訓練</h1><p class="page-subtitle">${dateText}</p></div><div class="live-status"><span></span>LOCAL DATA</div></div>
+      <section class="readiness-hero">
+        <div class="readiness-ring" style="--score:${readiness}"><div><strong class="num">${readiness}</strong><small>READINESS</small></div></div>
+        <div class="readiness-copy"><span class="signal-label">TODAY SIGNAL</span><h2>${readinessLabel}</h2>
+          <p>${readiness >= 65 ? "可依原計畫訓練；完成熱身後再確認工作重量。" : "今天先保留餘裕，避免勉強追求 PR。"}</p>
+          <div class="signal-chips"><span>睡眠 ${checkin.sleep}h</span><span>能量 ${checkin.energy}/5</span><span>痠痛 ${checkin.soreness}/5</span></div></div>
+      </section>
+      <div class="checkin-panel"><label>睡眠 <input type="range" min="3" max="10" step="0.5" value="${checkin.sleep}" data-checkin="sleep"><b class="num">${checkin.sleep}h</b></label>
+        <label>能量 <input type="range" min="1" max="5" value="${checkin.energy}" data-checkin="energy"><b class="num">${checkin.energy}/5</b></label>
+        <label>痠痛 <input type="range" min="1" max="5" value="${checkin.soreness}" data-checkin="soreness"><b class="num">${checkin.soreness}/5</b></label></div>
+
+      <button class="launch-workout" id="dashStart"><span><small>${active ? "SESSION ACTIVE" : "PRIMARY ACTION"}</small><strong>${active ? "回到進行中訓練" : "開始今日訓練"}</strong></span><span class="launch-arrow">↗</span></button>
+      <div class="quick-actions">
+        <button id="dashRepeat" ${last?"":"disabled"}><span>↻</span><strong>重複上次</strong><small>${last ? fmtDate(last.startTime) : "尚無紀錄"}</small></button>
+        <button id="dashCoach"><span>✦</span><strong>AI 排課</strong><small>${FL.hasApiKey()?"雙 AI 已連線":"待設定 Gateway"}</small></button>
+        <button id="dashCalendar"><span>▦</span><strong>訓練日曆</strong><small>檢視節奏</small></button>
+      </div>
+
+      <div class="section-head"><h2 class="section-title">本週負荷</h2><span class="hint">STREAK ${streak}D</span></div>
       <div class="stat-grid">
         <div class="card stat-card"><div class="stat-title">訓練次數（Frequency）</div><div class="stat-value">${s.workoutCount}</div><div class="stat-caption">次</div></div>
         <div class="card stat-card"><div class="stat-title">總訓練時間（Duration）</div><div class="stat-value" style="font-size:20px">${s.totalDuration ? fmtDuration(s.totalDuration) : "—"}</div></div>
         <div class="card stat-card"><div class="stat-title">總訓練量（Volume）</div><div class="stat-value" style="font-size:20px">${s.totalVolume ? fmtVolume(s.totalVolume) : "—"}</div></div>
         <div class="card stat-card"><div class="stat-title">最多肌群（Top Group）</div><div class="stat-value" style="font-size:20px">${s.topMuscle ? MUSCLE_GROUPS[s.topMuscle].zh : "—"}</div><div class="stat-caption">${s.topMuscle ? MUSCLE_GROUPS[s.topMuscle].en : ""}</div></div>
       </div>
-      <h2 class="section-title">近四週</h2>
+      ${latestBody ? `<button class="body-signal-card" id="dashBody"><span class="signal-label">BODY SIGNAL · ${esc(latestBody.date)}</span>
+        <div><strong>${latestBody.weightKg != null ? `${latestBody.weightKg} kg` : "—"}</strong><small>體重</small>
+        <strong>${latestBody.skeletalMuscleKg != null ? `${latestBody.skeletalMuscleKg} kg` : "—"}</strong><small>骨骼肌</small>
+        <strong>${latestBody.bodyFatPct != null ? `${latestBody.bodyFatPct}%` : "—"}</strong><small>體脂</small><b>查看分析 ›</b></div></button>` : `<button class="body-signal-card empty-body" id="dashBody"><span class="signal-label">BODY SIGNAL</span><strong>建立 InBody 與照片基準</strong><b>開始 ›</b></button>`}
+      <h2 class="section-title">近四週趨勢</h2>
       <div class="card">
         <div class="stat-title" style="margin-bottom:10px">訓練量趨勢（Volume Trend）</div>
         <div class="bar-chart">${trend.map((t) => `<div class="bar-col">
@@ -91,7 +126,31 @@ window.FL = window.FL || {};
       </div>
       ${ui.aiReportSectionHTML ? ui.aiReportSectionHTML() : ""}`;
     els.view.innerHTML = html;
+    els.view.querySelectorAll("[data-checkin]").forEach((input) => {
+      input.onchange = () => {
+        checkins[todayKey] = { ...checkin, [input.dataset.checkin]: Number(input.value), updatedAt: new Date().toISOString() };
+        save(); renderDashboard();
+      };
+    });
+    $("dashStart").onclick = () => { startWorkout(); openWorkoutOverlay(); };
+    $("dashRepeat").onclick = () => repeatLastWorkout(last);
+    $("dashCoach").onclick = () => ui.activateTab("coach");
+    $("dashCalendar").onclick = () => ui.activateTab("calendar");
+    $("dashBody").onclick = () => ui.activateTab("body");
     if (ui.bindAiReportSection) ui.bindAiReportSection(els.view);
+  }
+
+  function repeatLastWorkout(last) {
+    if (!last) return;
+    let workout = activeWorkout();
+    if (workout && workout.entries.length && !confirm("已有進行中的訓練，要直接回到該訓練嗎？")) return;
+    if (workout && workout.entries.length) return openWorkoutOverlay();
+    workout = workout || startWorkout();
+    for (const oldEntry of last.entries) {
+      const ex = exerciseById(oldEntry.exerciseId); if (!ex) continue;
+      addExerciseToWorkout(workout, ex, oldEntry.sets.filter((x)=>x.completedAt).map((x)=>({ weightKg:x.weightKg, reps:x.reps })));
+    }
+    openWorkoutOverlay();
   }
 
   /* =================== 日曆 Calendar =================== */
@@ -468,12 +527,16 @@ window.FL = window.FL || {};
   /* =================== 更多 More =================== */
   function renderMore() {
     els.view.innerHTML = `<h1 class="page-title">更多</h1>
+      <button class="list-item nav" id="mCalendar"><span class="li-title">訓練日曆（Calendar）</span><span class="li-sub">月份與肌群 ›</span></button>
+      <button class="list-item nav" id="mBody"><span class="li-title">身體資料（Body Intelligence）</span><span class="li-sub">${FL.db.bodyRecords.length} 筆 ›</span></button>
       <button class="list-item nav" id="mLibrary"><span class="li-title">動作庫（Exercise Library）</span><span class="li-sub">${FL.db.exercises.filter((e)=>!e.isArchived).length} 個動作 ›</span></button>
       <button class="list-item nav" id="mEquip"><span class="li-title">器材檔（Gym Equipment）</span><span class="li-sub">AI 排課依此 ›</span></button>
-      <button class="list-item nav" id="mAI"><span class="li-title">AI 設定（API Key / 模型）</span><span class="li-sub">${FL.hasApiKey()?"已設定 ›":"未設定 ›"}</span></button>
+      <button class="list-item nav" id="mAI"><span class="li-title">AI 設定（Claude / OpenAI）</span><span class="li-sub">${FL.hasApiKey()?`${FL.AI_PROVIDERS[FL.db.settings.aiProvider]} ›`:"未連線 ›"}</span></button>
       <button class="list-item nav" id="mPrefs"><span class="li-title">單位與計時</span><span class="li-sub">${FL.db.settings.unit} · 休息 ${FL.db.settings.restSeconds}s ›</span></button>
       <button class="list-item nav" id="mData"><span class="li-title">資料（備份 / 還原）</span><span class="li-sub">${FL.completedWorkouts().length} 場 ›</span></button>
-      <div class="card" style="color:var(--text-2);font-size:12px;line-height:1.7;margin-top:14px">FitLog v2.0（Web）· 資料存在本裝置瀏覽器，請定期備份。</div>`;
+      <div class="card" style="color:var(--text-2);font-size:12px;line-height:1.7;margin-top:14px">FitLog v3.0 Performance OS · 訓練與身體資料存在本裝置，請定期備份。</div>`;
+    $("mCalendar").onclick = () => ui.activateTab("calendar");
+    $("mBody").onclick = () => ui.activateTab("body");
     $("mLibrary").onclick = openLibrary;
     $("mEquip").onclick = openEquipment;
     $("mAI").onclick = openAISettings;
@@ -594,16 +657,26 @@ window.FL = window.FL || {};
 
   function openAISettings() {
     const s = FL.db.settings;
+    const provider = s.aiProvider || "auto";
     els.overlay.classList.remove("hidden");
     els.overlay.innerHTML = `<div class="ov-header"><button class="icon-btn" id="aiBack">‹ 返回</button><span class="ov-title">AI 設定</span><span style="width:52px"></span></div>
+      <div class="privacy-callout"><span>SECURE GATEWAY</span>OpenAI 與 Claude 金鑰只放在 Serverless 環境；此裝置僅保存 Gateway URL 與存取碼。</div>
       <div class="card">
-        <div class="form-row"><label style="flex-shrink:0">API Key</label><input class="form-input" type="password" id="aiKey" style="max-width:60%" placeholder="sk-ant-…" value="${esc(s.apiKey||"")}"></div>
-        <div class="form-row"><label>AI 模型</label><select class="form-select" id="aiModel">${Object.entries(FL.CLAUDE_MODELS).map(([id,m])=>`<option value="${id}" ${s.model===id?"selected":""}>${m.name}</option>`).join("")}</select></div>
+        <div class="form-row"><label>AI 供應商</label><select class="form-select" id="aiProvider">${Object.entries(FL.AI_PROVIDERS).map(([id,name])=>`<option value="${id}" ${provider===id?"selected":""}>${name}</option>`).join("")}</select></div>
+        <div class="form-row"><label>OpenAI 日常模型</label><select class="form-select" id="openaiModel">${Object.entries(FL.OPENAI_MODELS).map(([id,m])=>`<option value="${id}" ${s.openaiModel===id?"selected":""}>${m.name}</option>`).join("")}</select></div>
+        <div class="form-row"><label>OpenAI 圖片模型</label><select class="form-select" id="openaiVisionModel">${Object.entries(FL.OPENAI_MODELS).map(([id,m])=>`<option value="${id}" ${s.openaiVisionModel===id?"selected":""}>${m.name}</option>`).join("")}</select></div>
+        <div class="form-row"><label>Claude 模型</label><select class="form-select" id="anthropicModel">${Object.entries(FL.CLAUDE_MODELS).map(([id,m])=>`<option value="${id}" ${s.anthropicModel===id?"selected":""}>${m.name}</option>`).join("")}</select></div>
+        <div class="form-row"><label style="flex-shrink:0">Gateway URL</label><input class="form-input" type="url" id="aiGatewayUrl" style="max-width:64%" placeholder="https://…workers.dev" value="${esc(s.aiGatewayUrl||"")}"></div>
+        <div class="form-row"><label style="flex-shrink:0">Gateway 存取碼</label><input class="form-input" type="password" id="aiGatewayToken" style="max-width:64%" autocomplete="off" placeholder="此裝置專用" value="${esc(s.aiGatewayToken||"")}"></div>
         <div class="form-row" style="border-bottom:none"><button class="btn-ghost btn" id="aiTest" style="width:auto;padding:9px 18px">測試連線</button><span class="hint" id="aiTestR"></span></div></div>
-      <div class="card" style="color:var(--text-2);font-size:12.5px;line-height:1.7">${FL.CLAUDE_MODELS[s.model]?.hint||""}<br>Key 只存在本裝置、直連 Claude API。到 platform.claude.com 建立 Key，並建議設用量上限。匯出備份不會包含 Key。</div>`;
+      <div class="card" style="color:var(--text-2);font-size:12.5px;line-height:1.7">「自動選擇」會依 Gateway 可用金鑰選擇服務，圖片分析優先 OpenAI。Gateway 存取碼不會包含在匯出備份中。</div>`;
     $("aiBack").onclick = () => { els.overlay.classList.add("hidden"); ui.renderTab(); };
-    $("aiKey").oninput = (e) => { s.apiKey = e.target.value.trim(); save(); };
-    $("aiModel").onchange = (e) => { s.model = e.target.value; save(); openAISettings(); };
+    $("aiProvider").onchange = (e) => { s.aiProvider = e.target.value; save(); openAISettings(); };
+    $("openaiModel").onchange = (e) => { s.openaiModel = e.target.value; save(); };
+    $("openaiVisionModel").onchange = (e) => { s.openaiVisionModel = e.target.value; save(); };
+    $("anthropicModel").onchange = (e) => { s.anthropicModel = e.target.value; s.model = e.target.value; save(); };
+    $("aiGatewayUrl").oninput = (e) => { s.aiGatewayUrl = e.target.value.trim(); save(); };
+    $("aiGatewayToken").oninput = (e) => { s.aiGatewayToken = e.target.value.trim(); save(); };
     $("aiTest").onclick = async (e) => {
       const r = $("aiTestR"); e.target.disabled = true; r.textContent = "測試中…"; r.style.color = "var(--text-2)";
       try { await FL.testKey(); r.textContent = "✓ 連線成功"; r.style.color = "var(--accent)"; }
@@ -633,7 +706,9 @@ window.FL = window.FL || {};
     els.overlay.innerHTML = `<div class="ov-header"><button class="icon-btn" id="dtBack">‹ 返回</button><span class="ov-title">資料</span><span style="width:52px"></span></div>
       <div class="card"><div class="form-row"><label>動作</label><span class="hint num">${FL.db.exercises.length}</span></div>
         <div class="form-row"><label>訓練紀錄</label><span class="hint num">${FL.completedWorkouts().length}</span></div>
-        <div class="form-row" style="border-bottom:none"><label>AI 週報</label><span class="hint num">${FL.db.reports.length}</span></div></div>
+        <div class="form-row"><label>AI 週報</label><span class="hint num">${FL.db.reports.length}</span></div>
+        <div class="form-row"><label>身體紀錄</label><span class="hint num">${FL.db.bodyRecords.length}</span></div>
+        <div class="form-row" style="border-bottom:none"><label>身體分析</label><span class="hint num">${FL.db.bodyAnalyses.length}</span></div></div>
       <button class="btn btn-card" id="expJson">匯出 JSON 備份（不含 Key）</button>
       <button class="btn btn-card" id="expCsv">匯出 CSV（試算表）</button>
       <button class="btn btn-card" id="impJson">匯入 JSON（還原備份）</button>
@@ -670,8 +745,10 @@ window.FL = window.FL || {};
         if (!data.exercises || !data.workouts) throw new Error();
         if (confirm(`將以備份取代目前資料（${data.workouts.length} 筆訓練）。目前的 API Key 會保留。確定？`)) {
           const keepKey = FL.db.settings.apiKey;
+          const keepGatewayToken = FL.db.settings.aiGatewayToken;
           FL.replaceDB(data);
           if (!FL.db.settings.apiKey && keepKey) { FL.db.settings.apiKey = keepKey; save(); }
+          if (!FL.db.settings.aiGatewayToken && keepGatewayToken) { FL.db.settings.aiGatewayToken = keepGatewayToken; save(); }
           els.overlay.classList.add("hidden"); ui.renderTab(); ui.renderMiniBar(); ui.showToast("✓ 已還原備份");
         }
       } catch (_) { alert("檔案格式不正確"); }

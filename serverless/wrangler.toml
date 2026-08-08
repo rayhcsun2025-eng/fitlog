@@ -1,0 +1,7 @@
+name = "fitlog-ai-gateway"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+[vars]
+ALLOWED_ORIGINS = "http://localhost:8080,https://rayhcsun2025-eng.github.io"
+SAFETY_IDENTIFIER = "fitlog-owner"
