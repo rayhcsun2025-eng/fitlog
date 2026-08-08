@@ -1,7 +1,7 @@
 /* =====================================================================
    FitLog v3 — AI 引擎（AI Coach）
-   Claude / OpenAI 共用 AI 層。瀏覽器只呼叫自有 Serverless Gateway，
-   金鑰不進前端；支援文字、圖片與 Structured Output。
+   Claude / OpenAI 共用 AI 層。個人直接模式：金鑰只存此裝置，
+   瀏覽器直接呼叫供應商；支援文字、圖片與 Structured Output。
    ===================================================================== */
 "use strict";
 window.FL = window.FL || {};
@@ -21,59 +21,134 @@ window.FL = window.FL || {};
     auto: "自動選擇", openai: "OpenAI", anthropic: "Anthropic Claude",
   };
 
-  // ---- 安全 Gateway Client ----
-  function gatewayUrl() { return (FL.db.settings.aiGatewayUrl || "/api/ai").trim(); }
-  function gatewayToken() { return (FL.db.settings.aiGatewayToken || "").trim(); }
-  function selectedProvider() { return FL.db.settings.aiProvider || "auto"; }
+  // ---- 個人直接 API Client ----
+  function openAIKey() { return (FL.db.settings.openaiApiKey || "").trim(); }
+  function anthropicKey() { return (FL.db.settings.anthropicApiKey || FL.db.settings.apiKey || "").trim(); }
+  function selectedProvider() {
+    const requested = FL.db.settings.aiProvider || "auto";
+    if (requested === "openai") {
+      if (!openAIKey()) throw new Error("請先輸入 OpenAI API Key");
+      return "openai";
+    }
+    if (requested === "anthropic") {
+      if (!anthropicKey()) throw new Error("請先輸入 Claude API Key");
+      return "anthropic";
+    }
+    if (openAIKey()) return "openai";
+    if (anthropicKey()) return "anthropic";
+    throw new Error("請先輸入 OpenAI 或 Claude API Key");
+  }
   function selectedModel(provider, mode) {
     if (provider === "openai") return mode === "vision"
       ? FL.db.settings.openaiVisionModel : FL.db.settings.openaiModel;
     if (provider === "anthropic") return FL.db.settings.anthropicModel || FL.db.settings.model;
     return null;
   }
-  async function gatewayFetch(payload) {
-    if (!gatewayUrl()) throw new Error("請先設定 AI Gateway URL");
-    if (!gatewayToken()) throw new Error("請先設定 Gateway 存取碼");
+  function parseDataUrl(url) {
+    const match = /^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=]+)$/.exec(url || "");
+    if (!match) throw new Error("圖片格式不支援");
+    return { mediaType: match[1], data: match[2] };
+  }
+  function extractOpenAIText(body) {
+    for (const item of body.output || []) {
+      if (item.type !== "message") continue;
+      for (const part of item.content || []) if (part.type === "output_text" && part.text) return part.text;
+    }
+    return "";
+  }
+  async function apiFetch(url, options, provider) {
     let lastErr = "AI 服務暫時無法使用，請稍後再試";
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt) await new Promise((r) => setTimeout(r, 2000 * attempt));
       let res;
       try {
-        res = await fetch(gatewayUrl(), {
-          method: "POST",
-          headers: { "content-type": "application/json", "authorization": `Bearer ${gatewayToken()}` },
-          body: JSON.stringify(payload),
-        });
+        res = await fetch(url, options);
       } catch (_) { lastErr = "網路連線失敗，請確認網路後重試"; continue; }
-      if (res.ok) return res.json();
-      if (res.status === 401 || res.status === 403) throw new Error("Gateway 存取碼無效");
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) return json;
+      if (res.status === 401 || res.status === 403) throw new Error(`${provider === "openai" ? "OpenAI" : "Claude"} API Key 無效`);
       if (res.status === 413) throw new Error("照片容量過大，請減少照片後重試");
       if (res.status === 429 || res.status >= 500) {
         lastErr = res.status === 429 ? "請求過於頻繁，請稍後再試" : `AI 服務暫時無法使用（${res.status}）`;
         continue;
       }
-      let msg = `HTTP ${res.status}`;
-      try { msg = (await res.json()).error?.message || msg; } catch (_) {}
-      throw new Error(msg);
+      throw new Error(json.error?.message || `HTTP ${res.status}`);
     }
     throw new Error(lastErr);
   }
+  async function callOpenAI(payload, model) {
+    const content = [{ type: "input_text", text: payload.input || "" }];
+    for (const image of payload.images || []) {
+      parseDataUrl(image);
+      content.push({ type: "input_image", image_url: image, detail: "auto" });
+    }
+    const body = {
+      model,
+      instructions: payload.system || "",
+      input: [{ role: "user", content }],
+      max_output_tokens: Math.min(Math.max(Number(payload.maxOutputTokens) || 4096, 64), 12000),
+      store: false,
+      safety_identifier: "fitlog-personal",
+    };
+    if (payload.schema) body.text = { format: {
+      type: "json_schema", name: "fitlog_output", strict: true, schema: payload.schema,
+    } };
+    const result = await apiFetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", "authorization": `Bearer ${openAIKey()}` },
+      body: JSON.stringify(body),
+    }, "openai");
+    const text = extractOpenAIText(result);
+    if (!text) throw new Error("OpenAI 未回傳可用內容");
+    return {
+      text, model: result.model || model,
+      usage: { input_tokens: result.usage?.input_tokens || 0, output_tokens: result.usage?.output_tokens || 0 },
+    };
+  }
+  async function callAnthropic(payload, model) {
+    const content = [];
+    for (const image of payload.images || []) {
+      const parsed = parseDataUrl(image);
+      content.push({ type: "image", source: { type: "base64", media_type: parsed.mediaType, data: parsed.data } });
+    }
+    content.push({ type: "text", text: payload.input || "" });
+    const body = {
+      model, system: payload.system || "",
+      max_tokens: Math.min(Math.max(Number(payload.maxOutputTokens) || 4096, 1), 12000),
+      messages: [{ role: "user", content }],
+    };
+    if (payload.schema) body.output_config = { format: { type: "json_schema", schema: payload.schema } };
+    const result = await apiFetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json", "x-api-key": anthropicKey(),
+        "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify(body),
+    }, "anthropic");
+    const text = (result.content || []).find((x) => x.type === "text")?.text;
+    if (!text) throw new Error("Claude 未回傳可用內容");
+    return { text, model: result.model || model, usage: result.usage || {} };
+  }
   async function testKey() {
-    const provider = selectedProvider("text");
-    return gatewayFetch({ operation: "test", provider, model: selectedModel(provider, "text") });
+    const provider = selectedProvider();
+    const model = selectedModel(provider, "text");
+    const payload = { input: "Reply with OK.", maxOutputTokens: 128 };
+    const result = provider === "openai" ? await callOpenAI(payload, model) : await callAnthropic(payload, model);
+    return { provider, model: result.model };
   }
   async function structured(system, userText, schema, model, maxTokens, options) {
     const opts = options || {};
     const mode = opts.images && opts.images.length ? "vision" : "text";
-    const provider = opts.provider || selectedProvider(mode);
-    const json = await gatewayFetch({
-      operation: "structured", provider,
-      model: model || selectedModel(provider, mode),
-      mode, system, input: userText, schema,
-      images: opts.images || [], maxOutputTokens: maxTokens || 8192,
-    });
-    if (!json.content || typeof json.content !== "object") throw new Error("AI 回應格式異常，請再試一次");
-    return { content: json.content, usage: json.usage || {}, provider: json.provider || provider, model: json.model || model };
+    const provider = opts.provider || selectedProvider();
+    const pickedModel = model || selectedModel(provider, mode);
+    const payload = { system, input: userText, schema, images: opts.images || [], maxOutputTokens: maxTokens || 8192 };
+    const result = provider === "openai" ? await callOpenAI(payload, pickedModel) : await callAnthropic(payload, pickedModel);
+    let content;
+    try { content = JSON.parse(result.text); }
+    catch (_) { throw new Error("AI 回應格式異常，請再試一次"); }
+    if (!content || typeof content !== "object") throw new Error("AI 回應格式異常，請再試一次");
+    return { content, usage: result.usage || {}, provider, model: result.model || pickedModel };
   }
 
   // ---- 偏好學習（Preference Profile）----
@@ -113,7 +188,12 @@ window.FL = window.FL || {};
         id: ex.id, name_zh: ex.nameZh, name_en: ex.nameEn,
         muscle_group: ex.muscleGroup, movement_pattern: ex.movementPattern,
         equipment: ex.equipment, is_unilateral: ex.isUnilateral, is_favorite: ex.isFavorite,
-        last: last ? { weight_kg: last.sets[last.sets.length - 1].weightKg, reps: last.sets[last.sets.length - 1].reps } : null,
+        weight_input_mode: ex.weightInputMode || "total",
+        last: last ? {
+          weight_kg: last.sets[last.sets.length - 1].weightKg,
+          weight_kg_per_side: ex.weightInputMode === "perSide" ? FL.inputWeightKg(last.sets[last.sets.length - 1].weightKg, ex) : null,
+          reps: last.sets[last.sets.length - 1].reps,
+        } : null,
         best_e1rm_kg: e1rm ? round1(e1rm) : null,
       };
     });
@@ -156,7 +236,8 @@ window.FL = window.FL || {};
 7. 判斷漸進超負荷（progression_note）：對常練動作給「加重/加次/維持/減量(Deload)」的方向。
 8. 若使用者自由文字提到不適（如肩膀痛），必須在 warnings 說明並避開相關動作。
 9. 語氣：專業、直接、可執行。
-10. 精簡：每個 rationale 與 alternative.reason 控制在一句話（約 30 字內）；動作數配合時間（30分約3-4個、45分約4-5個、60分約5-6個、90分約6-8個），不要過多。`;
+10. 精簡：每個 rationale 與 alternative.reason 控制在一句話（約 30 字內）；動作數配合時間（30分約3-4個、45分約4-5個、60分約5-6個、90分約6-8個），不要過多。
+11. 所有 suggested_weight_kg 一律回傳「總外部重量」。若 weight_input_mode=perSide，代表兩手各自持重，總重量為每手重量 ×2；可在 rationale 同時標示每手重量。`;
 
   const PLANNER_SCHEMA = {
     type: "object", additionalProperties: false,
@@ -175,7 +256,7 @@ window.FL = window.FL || {};
             exercise_id: { type: "string", description: "必須是 candidate_exercises 中的 id" },
             name_zh: { type: "string" }, name_en: { type: "string" }, muscle_group: { type: "string" },
             sets: { type: "integer" }, reps: { type: "string", description: "如 8-10" },
-            suggested_weight_kg: { type: ["number", "null"] },
+            suggested_weight_kg: { type: ["number", "null"], description: "總外部重量 kg；perSide 動作為兩手重量合計" },
             rationale: { type: "string", description: "動作與重量的理由" },
             alternatives: {
               type: "array", description: "2 個替代動作，來自清單、同肌群",
@@ -325,7 +406,7 @@ window.FL = window.FL || {};
 規則：
 1. 全部繁體中文（台灣用語）；健身術語用「中文（English）」格式。
 2. 只根據提供的資料下結論；資料不足要明說「資料不足」，不得編造數字。組間休息一律假設 90 秒。
-3. 肌群為單一分類制——複合動作的間接刺激請自行納入恢復分析考量。單邊動作的 Volume 已以總次數計。
+3. 肌群為單一分類制——複合動作的間接刺激請自行納入恢復分析考量。單邊動作的 Volume 已以總次數計；所有 weight_kg 都是總外部重量，雙手獨立持重動作已合併兩手重量。
 4. 建議具體可執行（含重量/組數/頻率），最多 4 條。
 5. 善用長期資料：trend_weeks 是最多 12 週逐週彙總（由舊到新）、key_exercises.weekly_best_e1rm_kg 是逐週最佳估算 1RM（0=該週未練）、all_time_* 是歷史最佳。明確判斷長期趨勢（持續進步/平台期(連 3 週以上無提升)/倒退），引用具體數字與週數；本週對照歷史最佳評價。
 6. 找出弱點（weak_point）：訓練不足的肌群或動作模式、或明顯停滯的動作。
@@ -392,8 +473,13 @@ window.FL = window.FL || {};
     CLAUDE_MODELS, OPENAI_MODELS, AI_PROVIDERS, testKey, structured,
     updatePreferenceProfile, availableEquipment, candidateExercises, recentContext,
     generatePlan, buildWeeklyPayload, generateWeeklyReport,
-    gatewayUrl, selectedProvider, selectedModel,
-    hasApiKey: () => !!gatewayUrl() && !!gatewayToken(),
+    selectedProvider, selectedModel,
+    hasApiKey: () => {
+      const requested = FL.db.settings.aiProvider || "auto";
+      if (requested === "openai") return !!openAIKey();
+      if (requested === "anthropic") return !!anthropicKey();
+      return !!openAIKey() || !!anthropicKey();
+    },
     aiModelLabel: (id) => OPENAI_MODELS[id]?.short || CLAUDE_MODELS[id]?.short || id || "Auto",
   });
 })(window.FL);

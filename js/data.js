@@ -9,7 +9,7 @@ window.FL = window.FL || {};
 
 (function (FL) {
   const STORAGE_KEY = "fitlog.v1"; // 沿用同一鍵 → 就地升級、零遷移風險
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 5;
   const LB_PER_KG = 2.2046226218;
 
   // ---- 常數表 ----
@@ -123,11 +123,19 @@ window.FL = window.FL || {};
     // Overhead Press 維持原名（v2 seed 已沿用同名，不需別名）
   };
 
+  // 兩個獨立負重同時使用：介面輸入單手重量，資料一律儲存雙手總重量。
+  const PER_SIDE_LOAD_NAMES = new Set([
+    "Dumbbell Bench Press", "Dumbbell Fly", "Cable Fly", "Cable Crossover", "Dumbbell Row",
+    "Dumbbell Shoulder Press", "Arnold Press", "Lateral Raise", "Front Raise", "Rear Delt Fly",
+    "Bulgarian Split Squat", "Lunge", "Dumbbell Curl", "Hammer Curl",
+  ]);
+
   function seedExercise(row, id) {
     const [nameZh, nameEn, muscleGroup, movementPattern, bw, equipment, uni] = row;
     return {
       id: id || uid(), nameZh, nameEn, muscleGroup, movementPattern,
       isBodyweight: !!bw, equipment, isUnilateral: !!uni,
+      weightInputMode: PER_SIDE_LOAD_NAMES.has(nameEn) ? "perSide" : "total",
       isCustom: false, isFavorite: false, isBlacklisted: false, isArchived: false,
     };
   }
@@ -223,12 +231,36 @@ window.FL = window.FL || {};
       };
     }
 
+    if (from < 4) {
+      // v4：個人直接模式。沿用舊版 Claude apiKey，新增 OpenAI／Claude 獨立金鑰。
+      data.settings.openaiApiKey = data.settings.openaiApiKey || "";
+      data.settings.anthropicApiKey = data.settings.anthropicApiKey || data.settings.apiKey || "";
+    }
+
+    if (from < 5) {
+      // v5：重量正規化。雙手各自持重的動作，舊紀錄視為「每手重量」並轉成總重量。
+      const byExerciseId = {};
+      for (const ex of data.exercises) {
+        const canonical = ALIAS[ex.nameEn] || ex.nameEn;
+        if (PER_SIDE_LOAD_NAMES.has(canonical)) ex.weightInputMode = "perSide";
+        else if (!ex.weightInputMode) ex.weightInputMode = "total";
+        byExerciseId[ex.id] = ex;
+      }
+      for (const workout of data.workouts) {
+        for (const entry of workout.entries || []) {
+          if (byExerciseId[entry.exerciseId]?.weightInputMode !== "perSide") continue;
+          for (const set of entry.sets || []) set.weightKg = (Number(set.weightKg) || 0) * 2;
+        }
+      }
+    }
+
     data.settings = Object.assign(
       {
         unit: "kg", restSeconds: 90, apiKey: "", model: "claude-sonnet-5",
         defaultGoal: "hypertrophy", aiProvider: "auto",
         openaiModel: "gpt-5.6-luna", openaiVisionModel: "gpt-5.6-terra",
-        anthropicModel: "claude-sonnet-5", aiGatewayUrl: "/api/ai", aiGatewayToken: "",
+        anthropicModel: "claude-sonnet-5", openaiApiKey: "", anthropicApiKey: "",
+        aiGatewayUrl: "/api/ai", aiGatewayToken: "",
         todayCheckins: {}, bodyGoal: {
           type: "recomposition", targetWeightKg: null, targetBodyFatPct: null,
           targetMuscleKg: null, targetDate: null,
@@ -244,11 +276,13 @@ window.FL = window.FL || {};
   function uid() { return crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2); }
   function exerciseById(id) { return db.exercises.find((e) => e.id === id); }
 
-  // 匯出時排除 API Key（安全）
+  // 匯出時排除所有 API Key 與舊 Gateway 憑證（安全）
   function exportData() {
     const clone = JSON.parse(JSON.stringify(db));
     if (clone.settings) {
       delete clone.settings.apiKey;
+      delete clone.settings.openaiApiKey;
+      delete clone.settings.anthropicApiKey;
       delete clone.settings.aiGatewayToken;
     }
     return clone;
@@ -261,6 +295,13 @@ window.FL = window.FL || {};
   function toKg(value) { return db.settings.unit === "kg" ? value : value / LB_PER_KG; }
   function trimNum(v) { return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100); }
   function fmtWeight(kg) { return `${trimNum(toDisplay(kg))} ${db.settings.unit}`; }
+  function weightInputMultiplier(exercise) { return exercise?.weightInputMode === "perSide" ? 2 : 1; }
+  function inputWeightKg(totalKg, exercise) { return (Number(totalKg) || 0) / weightInputMultiplier(exercise); }
+  function totalWeightKg(inputKg, exercise) { return (Number(inputKg) || 0) * weightInputMultiplier(exercise); }
+  function fmtExerciseWeight(totalKg, exercise) {
+    if (exercise?.weightInputMode !== "perSide") return fmtWeight(totalKg);
+    return `${fmtWeight(inputWeightKg(totalKg, exercise))}/手（總 ${fmtWeight(totalKg)}）`;
+  }
   function fmtVolume(kg) {
     if (db.settings.unit === "lb") return `${Math.round(kg * LB_PER_KG).toLocaleString()} lb`;
     return kg >= 10000 ? `${(kg / 1000).toFixed(1)} t` : `${Math.round(kg).toLocaleString()} kg`;
@@ -292,9 +333,10 @@ window.FL = window.FL || {};
   // ---- 匯出到命名空間 ----
   Object.assign(FL, {
     STORAGE_KEY, SCHEMA_VERSION, LB_PER_KG,
-    MUSCLE_GROUPS, PATTERNS, EQUIPMENT, SET_TYPES, GOALS, BODY_STATES, FEEDBACK, PR_LABELS, SEED,
+    MUSCLE_GROUPS, PATTERNS, EQUIPMENT, SET_TYPES, GOALS, BODY_STATES, FEEDBACK, PR_LABELS, SEED, PER_SIDE_LOAD_NAMES,
     loadDB, migrate, save, uid, exerciseById, exportData, replaceDB,
-    toDisplay, toKg, trimNum, fmtWeight, fmtVolume, fmtDuration, fmtClock, fmtDate, esc,
+    toDisplay, toKg, trimNum, fmtWeight, weightInputMultiplier, inputWeightKg, totalWeightKg, fmtExerciseWeight,
+    fmtVolume, fmtDuration, fmtClock, fmtDate, esc,
   });
   Object.defineProperty(FL, "db", { get() { return db; }, configurable: true });
 })(window.FL);

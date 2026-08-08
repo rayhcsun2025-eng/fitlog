@@ -234,7 +234,7 @@ window.FL = window.FL || {};
     $("ibCancel").onclick = ui.closeModal;
     $("ibScan").onclick = async (event) => {
       const file = $("ibFile").files[0]; if (!file) return alert("請先選擇 InBody 報告照片");
-      if (!FL.hasApiKey()) return alert("請先到「更多 → AI 設定」完成安全 Gateway 設定。");
+      if (!FL.hasApiKey()) return alert("請先到「更多 → AI 設定」輸入 API Key。");
       event.target.disabled = true; $("ibStatus").textContent = "AI 辨識中…";
       try {
         scanBlob = await compressImage(file, 1800, 0.86);
@@ -295,7 +295,7 @@ window.FL = window.FL || {};
   }
 
   async function openAnalyzeConsent() {
-    if (!FL.hasApiKey()) return alert("請先到「更多 → AI 設定」完成安全 Gateway 設定。");
+    if (!FL.hasApiKey()) return alert("請先到「更多 → AI 設定」輸入 API Key。");
     const photos = (await listPhotos()).filter((p) => p.kind === "progress").slice(0, 3);
     const record = latestBodyRecord();
     ui.els.modal.classList.remove("hidden");

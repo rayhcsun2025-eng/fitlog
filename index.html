@@ -19,17 +19,19 @@
 
   <div id="miniBar" class="mini-bar hidden"></div>
 
-  <nav class="tabbar">
-    <button class="tab active" data-tab="dashboard">
-      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 20v-9M12 20V4.5M19 20v-5.5"/></svg></span>總覽</button>
-    <button class="tab" data-tab="workouts">
-      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M7 7.5v9M17 7.5v9M3.5 10v4M20.5 10v4M7 12h10"/></svg></span>訓練</button>
-    <button class="tab" data-tab="coach">
-      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l1.9 5.4 5.6 1.6-5.6 1.6L12 17.5l-1.9-5.4-5.6-1.6 5.6-1.6L12 3.5z"/><path d="M18.5 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z"/></svg></span>AI 教練</button>
-    <button class="tab" data-tab="body">
-      <span class="tab-icon"><span class="body-icon-shape"></span></span>身體</button>
-    <button class="tab" data-tab="more">
-      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></span>更多</button>
+  <nav class="tabbar" aria-label="主要功能">
+    <button class="tab active" data-tab="dashboard" aria-label="今日中控台">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 20v-9M12 20V4.5M19 20v-5.5"/></svg></span>
+      <span class="tab-copy"><span class="tab-label">今日</span><span class="tab-code">LIVE</span></span></button>
+    <button class="tab" data-tab="workouts" aria-label="訓練紀錄">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M7 7.5v9M17 7.5v9M3.5 10v4M20.5 10v4M7 12h10"/></svg></span>
+      <span class="tab-copy"><span class="tab-label">訓練</span><span class="tab-code">LOG</span></span></button>
+    <button class="tab tab-ai" data-tab="coach" aria-label="AI 教練">
+      <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l1.9 5.4 5.6 1.6-5.6 1.6L12 17.5l-1.9-5.4-5.6-1.6 5.6-1.6L12 3.5z"/><path d="M18.5 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z"/></svg></span>
+      <span class="tab-copy"><span class="tab-label">AI</span><span class="tab-code">COACH</span></span></button>
+    <button class="tab" data-tab="more" aria-label="系統控制中心">
+      <span class="tab-icon tab-core-icon"><i></i><i></i><i></i></span>
+      <span class="tab-copy"><span class="tab-label">系統</span><span class="tab-code">CORE</span></span></button>
   </nav>
 
   <div id="overlay" class="overlay hidden"></div>

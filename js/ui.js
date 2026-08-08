@@ -21,7 +21,8 @@ window.FL = window.FL || {};
   };
 
   // ---- 共用 helper ----
-  const { esc, fmtWeight, fmtVolume, fmtDuration, fmtClock, fmtDate, trimNum, toDisplay, toKg,
+  const { esc, fmtWeight, fmtExerciseWeight, fmtVolume, fmtDuration, fmtClock, fmtDate, trimNum, toDisplay, toKg,
+    inputWeightKg, totalWeightKg,
     MUSCLE_GROUPS, PATTERNS, EQUIPMENT, SET_TYPES, FEEDBACK, PR_LABELS, save, uid, exerciseById } = FL;
 
   ui.currentTab = "dashboard";
@@ -47,7 +48,8 @@ window.FL = window.FL || {};
   ui.closeModal = function () { els.modal.classList.add("hidden"); };
   ui.activateTab = function (tab) {
     ui.currentTab = tab;
-    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    const dockTab = ["body", "calendar"].includes(tab) ? "more" : tab;
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === dockTab));
     ui.renderTab();
   };
 
@@ -94,7 +96,7 @@ window.FL = window.FL || {};
       <button class="launch-workout" id="dashStart"><span><small>${active ? "SESSION ACTIVE" : "PRIMARY ACTION"}</small><strong>${active ? "回到進行中訓練" : "開始今日訓練"}</strong></span><span class="launch-arrow">↗</span></button>
       <div class="quick-actions">
         <button id="dashRepeat" ${last?"":"disabled"}><span>↻</span><strong>重複上次</strong><small>${last ? fmtDate(last.startTime) : "尚無紀錄"}</small></button>
-        <button id="dashCoach"><span>✦</span><strong>AI 排課</strong><small>${FL.hasApiKey()?"雙 AI 已連線":"待設定 Gateway"}</small></button>
+        <button id="dashCoach"><span>✦</span><strong>AI 排課</strong><small>${FL.hasApiKey()?"AI 已連線":"待輸入 API Key"}</small></button>
         <button id="dashCalendar"><span>▦</span><strong>訓練日曆</strong><small>檢視節奏</small></button>
       </div>
 
@@ -304,11 +306,13 @@ window.FL = window.FL || {};
   };
 
   /* ---- 進行中訓練 ---- */
-  function setRowHTML(set, index, unit, isActive) {
+  function setRowHTML(set, index, unit, isActive, exercise) {
+    const inputKg = inputWeightKg(set.weightKg, exercise);
+    const perSide = exercise?.weightInputMode === "perSide";
     return `<div class="set-row" data-set="${set.id}">
       <button class="set-num ${set.setType}" data-action="cycle-type">${set.setType==="working"?index+1:set.setType==="warmup"?"熱":"力"}</button>
-      <input class="set-input" type="number" step="any" inputmode="decimal" data-action="weight" value="${set.weightKg?trimNum(toDisplay(set.weightKg)):""}" placeholder="0">
-      <span class="set-unit">${unit}</span><span class="set-x">×</span>
+      <input class="set-input" type="number" step="any" inputmode="decimal" data-action="weight" value="${inputKg?trimNum(toDisplay(inputKg)):""}" placeholder="0">
+      <span class="set-unit">${unit}${perSide?"/手":""}</span><span class="set-x">×</span>
       <input class="set-input reps" type="number" inputmode="numeric" data-action="reps" value="${set.reps||""}" placeholder="0">
       <span class="set-unit">次</span><span class="set-spacer"></span>
       ${isActive?`<button class="check-btn ${set.completedAt?"done":""}" data-action="toggle">✓</button>`:""}
@@ -322,17 +326,19 @@ window.FL = window.FL || {};
         <span class="ex-name">${esc(ex?.nameZh||"（動作已刪除）")}${ex?.isUnilateral?' <span class="uni-badge">單邊</span>':""}<small>${esc(ex?.nameEn||"")}</small></span>
         ${ex?muscleTag(ex.muscleGroup,true):""}
         <button class="mini-del" data-action="remove-entry">✕</button></div>
-      ${entry.sets.map((s,i)=>setRowHTML(s,i,unit,isActive)).join("")}
+      ${ex?.weightInputMode==="perSide"?`<div class="weight-basis-note">每手輸入 · 系統儲存雙手總重量（例如 10 + 10 = 20 ${unit}）</div>`:""}
+      ${entry.sets.map((s,i)=>setRowHTML(s,i,unit,isActive,ex)).join("")}
       <button class="btn-ghost btn" data-action="add-set" style="width:100%">＋ 加一組（Set）</button></div>`;
   }
   function bindEntryCards(container, workout, isActive, rerender) {
     container.querySelectorAll(".exercise-card").forEach((card) => {
       const entry = workout.entries.find((e) => e.id === card.dataset.entry);
       if (!entry) return;
+      const ex = exerciseById(entry.exerciseId);
       card.querySelectorAll(".set-row").forEach((row) => {
         const set = entry.sets.find((s) => s.id === row.dataset.set);
         if (!set) return;
-        row.querySelector('[data-action="weight"]').oninput = (e) => { set.weightKg = toKg(parseFloat(e.target.value) || 0); save(); };
+        row.querySelector('[data-action="weight"]').oninput = (e) => { set.weightKg = totalWeightKg(toKg(parseFloat(e.target.value) || 0), ex); save(); };
         row.querySelector('[data-action="reps"]').oninput = (e) => { set.reps = parseInt(e.target.value) || 0; save(); };
         row.querySelector('[data-action="cycle-type"]').onclick = () => { set.setType = SET_TYPES[(SET_TYPES.indexOf(set.setType)+1)%SET_TYPES.length]; save(); rerender(); };
         row.querySelector('[data-action="del-set"]').onclick = () => { entry.sets = entry.sets.filter((s)=>s.id!==set.id); save(); rerender(); };
@@ -526,15 +532,54 @@ window.FL = window.FL || {};
 
   /* =================== 更多 More =================== */
   function renderMore() {
-    els.view.innerHTML = `<h1 class="page-title">更多</h1>
-      <button class="list-item nav" id="mCalendar"><span class="li-title">訓練日曆（Calendar）</span><span class="li-sub">月份與肌群 ›</span></button>
-      <button class="list-item nav" id="mBody"><span class="li-title">身體資料（Body Intelligence）</span><span class="li-sub">${FL.db.bodyRecords.length} 筆 ›</span></button>
-      <button class="list-item nav" id="mLibrary"><span class="li-title">動作庫（Exercise Library）</span><span class="li-sub">${FL.db.exercises.filter((e)=>!e.isArchived).length} 個動作 ›</span></button>
-      <button class="list-item nav" id="mEquip"><span class="li-title">器材檔（Gym Equipment）</span><span class="li-sub">AI 排課依此 ›</span></button>
-      <button class="list-item nav" id="mAI"><span class="li-title">AI 設定（Claude / OpenAI）</span><span class="li-sub">${FL.hasApiKey()?`${FL.AI_PROVIDERS[FL.db.settings.aiProvider]} ›`:"未連線 ›"}</span></button>
-      <button class="list-item nav" id="mPrefs"><span class="li-title">單位與計時</span><span class="li-sub">${FL.db.settings.unit} · 休息 ${FL.db.settings.restSeconds}s ›</span></button>
-      <button class="list-item nav" id="mData"><span class="li-title">資料（備份 / 還原）</span><span class="li-sub">${FL.completedWorkouts().length} 場 ›</span></button>
-      <div class="card" style="color:var(--text-2);font-size:12px;line-height:1.7;margin-top:14px">FitLog v3.0 Performance OS · 訓練與身體資料存在本裝置，請定期備份。</div>`;
+    const workouts = FL.completedWorkouts();
+    const exerciseCount = FL.db.exercises.filter((e)=>!e.isArchived).length;
+    const equipmentCount = Object.values(FL.db.settings.equipmentProfile || {}).filter(Boolean).length;
+    const aiReady = FL.hasApiKey();
+    const provider = FL.AI_PROVIDERS[FL.db.settings.aiProvider] || "自動選擇";
+    const lastWorkout = [...workouts].sort((a,b)=>new Date(b.startTime)-new Date(a.startTime))[0];
+    els.view.innerHTML = `<div class="more-page">
+      <header class="more-header">
+        <div><div class="system-eyebrow">FITLOG / SYSTEM CORE</div><h1>控制中心</h1><p>管理訓練情報、AI 引擎與裝置資料。</p></div>
+        <div class="node-status"><span></span><strong>LOCAL</strong><small>READY</small></div>
+      </header>
+
+      <section class="core-overview">
+        <div class="core-ident"><span class="core-ring"><i>FL</i></span><div><small>PERSONAL PERFORMANCE NODE</small><strong>系統運作正常</strong><p>${lastWorkout?`最近訓練 ${fmtDate(lastWorkout.startTime)}`:"等待第一筆訓練資料"}</p></div></div>
+        <div class="core-metrics">
+          <div><strong>${workouts.length}</strong><span>SESSIONS</span></div>
+          <div><strong>${exerciseCount}</strong><span>EXERCISES</span></div>
+          <div><strong>${FL.db.bodyRecords.length}</strong><span>BODY DATA</span></div>
+        </div>
+      </section>
+
+      <section class="control-section">
+        <div class="control-heading"><span>01</span><div><strong>INTELLIGENCE</strong><small>模型與身體情報</small></div></div>
+        <div class="control-grid intelligence-grid">
+          <button class="control-card featured" id="mAI"><span class="control-glyph">✦</span><span class="control-copy"><small>AI ENGINE</small><strong>AI 模型設定</strong><em>${aiReady?`${provider} · ONLINE`:"尚未輸入 API Key"}</em></span><span class="control-state ${aiReady?"online":""}">${aiReady?"READY":"SETUP"}</span></button>
+          <button class="control-card" id="mBody"><span class="control-glyph cyan">◎</span><span class="control-copy"><small>BODY INTELLIGENCE</small><strong>身體與目標</strong><em>${FL.db.bodyRecords.length} 筆組成紀錄</em></span><span class="control-arrow">↗</span></button>
+        </div>
+      </section>
+
+      <section class="control-section">
+        <div class="control-heading"><span>02</span><div><strong>TRAINING SYSTEM</strong><small>訓練資源與規則</small></div></div>
+        <div class="control-grid triple-grid">
+          <button class="control-card compact" id="mCalendar"><span class="control-glyph">CAL</span><span class="control-copy"><strong>訓練日曆</strong><em>月份與肌群</em></span></button>
+          <button class="control-card compact" id="mLibrary"><span class="control-glyph">LIB</span><span class="control-copy"><strong>動作庫</strong><em>${exerciseCount} 個動作</em></span></button>
+          <button class="control-card compact" id="mEquip"><span class="control-glyph">GYM</span><span class="control-copy"><strong>器材檔</strong><em>${equipmentCount} 類可用</em></span></button>
+        </div>
+      </section>
+
+      <section class="control-section">
+        <div class="control-heading"><span>03</span><div><strong>DEVICE & DATA</strong><small>本機偏好與資料安全</small></div></div>
+        <div class="control-grid">
+          <button class="control-card" id="mPrefs"><span class="control-glyph violet">SYS</span><span class="control-copy"><small>DEVICE PROFILE</small><strong>單位與計時</strong><em>${FL.db.settings.unit.toUpperCase()} · 休息 ${FL.db.settings.restSeconds}s</em></span><span class="control-arrow">↗</span></button>
+          <button class="control-card" id="mData"><span class="control-glyph cyan">DATA</span><span class="control-copy"><small>LOCAL STORAGE</small><strong>備份與還原</strong><em>${workouts.length} 場訓練已保存</em></span><span class="control-arrow">↗</span></button>
+        </div>
+      </section>
+
+      <footer class="system-footer"><span>FITLOG OS</span><strong>v3.3</strong><i></i><span>LOCAL-FIRST</span><i></i><span>STORAGE: DEVICE</span></footer>
+    </div>`;
     $("mCalendar").onclick = () => ui.activateTab("calendar");
     $("mBody").onclick = () => ui.activateTab("body");
     $("mLibrary").onclick = openLibrary;
@@ -593,13 +638,13 @@ window.FL = window.FL || {};
         <span class="ov-title">${esc(ex.nameZh)}</span><button class="icon-btn" id="xEdit">編輯</button></div>
       <div style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         ${muscleTag(ex.muscleGroup)}<span class="tag">${PATTERNS[ex.movementPattern]}</span>
-        <span class="tag">${EQUIPMENT[ex.equipment]||""}</span>${ex.isUnilateral?'<span class="tag">單邊（Unilateral）</span>':""}</div>
+        <span class="tag">${EQUIPMENT[ex.equipment]||""}</span>${ex.isUnilateral?'<span class="tag">單邊（Unilateral）</span>':""}${ex.weightInputMode==="perSide"?'<span class="tag">每手輸入 → 總重 ×2</span>':""}</div>
       <div class="toggle-row">
         <button class="chip ${ex.isFavorite?"on":""}" id="xFav">★ 收藏</button>
         <button class="chip ${ex.isBlacklisted?"on danger":""}" id="xBlack">🚫 不推薦</button>
         <button class="chip ${ex.isUnilateral?"on":""}" id="xUni">單邊</button></div>
       <div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr">
-        <div class="card stat-card"><div class="stat-title">最大重量</div><div class="stat-value" style="font-size:20px">${maxW?trimNum(toDisplay(maxW)):"—"}</div><div class="stat-caption">${unit}</div></div>
+        <div class="card stat-card"><div class="stat-title">最大總重量</div><div class="stat-value" style="font-size:20px">${maxW?trimNum(toDisplay(maxW)):"—"}</div><div class="stat-caption">${unit}${ex.weightInputMode==="perSide"?" · 雙手合計":""}</div></div>
         <div class="card stat-card"><div class="stat-title">估算 1RM</div><div class="stat-value" style="font-size:20px">${e1rm?trimNum(toDisplay(e1rm)):"—"}</div><div class="stat-caption">${unit}·估計</div></div>
         <div class="card stat-card"><div class="stat-title">最大單場量</div><div class="stat-value" style="font-size:16px">${maxSess?fmtVolume(maxSess):"—"}</div><div class="stat-caption">Volume</div></div></div>
       ${rm ? `<div class="card"><div class="stat-title" style="margin-bottom:8px">RM 估算表（Epley × Brzycki 平均，估計值）</div>
@@ -609,7 +654,7 @@ window.FL = window.FL || {};
       ${sessions.length ? sessions.map((s)=>`<div class="card">
         <div class="li-top"><span class="li-title">${fmtDate(s.date)}</span>
           <span class="li-sub num">${fmtVolume(s.sets.filter((x)=>x.setType!=="warmup").reduce((a,x)=>a+x.weightKg*x.reps*FL.unilateralMult(ex),0))}</span></div>
-        <div class="sets-summary">${s.sets.map((x)=>`${trimNum(toDisplay(x.weightKg))}×${x.reps}`).join("　")}</div></div>`).join("")
+        <div class="sets-summary">${s.sets.map((x)=>`${fmtExerciseWeight(x.weightKg,ex)} × ${x.reps}`).join("　")}</div></div>`).join("")
         : `<div class="empty">還沒有紀錄——在訓練中加入這個動作後，歷史與 PR 會顯示在這裡。</div>`}
       <button class="btn btn-card" id="xArchive" style="margin-top:8px">${ex.isArchived?"取消封存":"封存（不刪除歷史）"}</button>`;
     $("xBack").onclick = () => { els.overlay.classList.add("hidden"); openLibrary(); };
@@ -632,12 +677,14 @@ window.FL = window.FL || {};
       <div class="form-row"><label>動作模式</label><select class="form-select" id="ePattern">${Object.keys(PATTERNS).map((pp)=>`<option value="${pp}" ${ex?.movementPattern===pp?"selected":""}>${PATTERNS[pp]}</option>`).join("")}</select></div>
       <div class="form-row"><label>器材</label><select class="form-select" id="eEquip">${Object.keys(EQUIPMENT).map((q)=>`<option value="${q}" ${ex?.equipment===q?"selected":""}>${EQUIPMENT[q]}</option>`).join("")}</select></div>
       <div class="form-row"><label>自重動作</label><input type="checkbox" id="eBw" ${ex?.isBodyweight?"checked":""} style="width:20px;height:20px;accent-color:#4ADE80"></div>
+      <div class="form-row"><label>重量輸入</label><select class="form-select" id="eWeightMode"><option value="total" ${ex?.weightInputMode!=="perSide"?"selected":""}>總重量</option><option value="perSide" ${ex?.weightInputMode==="perSide"?"selected":""}>每手重量（自動 ×2）</option></select></div>
       <div class="form-row" style="border-bottom:none"><label>單邊動作</label><input type="checkbox" id="eUni" ${ex?.isUnilateral?"checked":""} style="width:20px;height:20px;accent-color:#4ADE80"></div></div>`;
     $("eCancel").onclick = ui.closeModal;
     $("eSave").onclick = () => {
       const zh = $("eZh").value.trim(); if (!zh) return alert("請輸入中文名稱");
       const data = { nameZh: zh, nameEn: $("eEn").value.trim()||zh, muscleGroup: $("eGroup").value,
-        movementPattern: $("ePattern").value, equipment: $("eEquip").value, isBodyweight: $("eBw").checked, isUnilateral: $("eUni").checked };
+        movementPattern: $("ePattern").value, equipment: $("eEquip").value, isBodyweight: $("eBw").checked,
+        weightInputMode: $("eWeightMode").value, isUnilateral: $("eUni").checked };
       if (isNew) FL.db.exercises.push({ id: uid(), ...data, isCustom:true, isFavorite:false, isBlacklisted:false, isArchived:false });
       else Object.assign(ex, data);
       save(); ui.closeModal(); onDone ? onDone() : ui.renderTab();
@@ -660,26 +707,26 @@ window.FL = window.FL || {};
     const provider = s.aiProvider || "auto";
     els.overlay.classList.remove("hidden");
     els.overlay.innerHTML = `<div class="ov-header"><button class="icon-btn" id="aiBack">‹ 返回</button><span class="ov-title">AI 設定</span><span style="width:52px"></span></div>
-      <div class="privacy-callout"><span>SECURE GATEWAY</span>OpenAI 與 Claude 金鑰只放在 Serverless 環境；此裝置僅保存 Gateway URL 與存取碼。</div>
+      <div class="privacy-callout"><span>PERSONAL BYOK</span>API Key 只儲存在這台裝置的瀏覽器，並直接送往對應的 AI 供應商。請勿在共用裝置輸入。</div>
       <div class="card">
         <div class="form-row"><label>AI 供應商</label><select class="form-select" id="aiProvider">${Object.entries(FL.AI_PROVIDERS).map(([id,name])=>`<option value="${id}" ${provider===id?"selected":""}>${name}</option>`).join("")}</select></div>
+        <div class="form-row"><label style="flex-shrink:0">OpenAI API Key</label><input class="form-input" type="password" id="openaiApiKey" style="max-width:64%" autocomplete="off" spellcheck="false" placeholder="sk-…" value="${esc(s.openaiApiKey||"")}"></div>
         <div class="form-row"><label>OpenAI 日常模型</label><select class="form-select" id="openaiModel">${Object.entries(FL.OPENAI_MODELS).map(([id,m])=>`<option value="${id}" ${s.openaiModel===id?"selected":""}>${m.name}</option>`).join("")}</select></div>
         <div class="form-row"><label>OpenAI 圖片模型</label><select class="form-select" id="openaiVisionModel">${Object.entries(FL.OPENAI_MODELS).map(([id,m])=>`<option value="${id}" ${s.openaiVisionModel===id?"selected":""}>${m.name}</option>`).join("")}</select></div>
+        <div class="form-row"><label style="flex-shrink:0">Claude API Key</label><input class="form-input" type="password" id="anthropicApiKey" style="max-width:64%" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" value="${esc(s.anthropicApiKey||s.apiKey||"")}"></div>
         <div class="form-row"><label>Claude 模型</label><select class="form-select" id="anthropicModel">${Object.entries(FL.CLAUDE_MODELS).map(([id,m])=>`<option value="${id}" ${s.anthropicModel===id?"selected":""}>${m.name}</option>`).join("")}</select></div>
-        <div class="form-row"><label style="flex-shrink:0">Gateway URL</label><input class="form-input" type="url" id="aiGatewayUrl" style="max-width:64%" placeholder="https://…workers.dev" value="${esc(s.aiGatewayUrl||"")}"></div>
-        <div class="form-row"><label style="flex-shrink:0">Gateway 存取碼</label><input class="form-input" type="password" id="aiGatewayToken" style="max-width:64%" autocomplete="off" placeholder="此裝置專用" value="${esc(s.aiGatewayToken||"")}"></div>
         <div class="form-row" style="border-bottom:none"><button class="btn-ghost btn" id="aiTest" style="width:auto;padding:9px 18px">測試連線</button><span class="hint" id="aiTestR"></span></div></div>
-      <div class="card" style="color:var(--text-2);font-size:12.5px;line-height:1.7">「自動選擇」會依 Gateway 可用金鑰選擇服務，圖片分析優先 OpenAI。Gateway 存取碼不會包含在匯出備份中。</div>`;
+      <div class="card" style="color:var(--text-2);font-size:12.5px;line-height:1.7">「自動選擇」會優先使用 OpenAI，沒有 OpenAI Key 時改用 Claude。API Key 不會包含在匯出備份中；清除瀏覽器網站資料也會一併清除金鑰。</div>`;
     $("aiBack").onclick = () => { els.overlay.classList.add("hidden"); ui.renderTab(); };
     $("aiProvider").onchange = (e) => { s.aiProvider = e.target.value; save(); openAISettings(); };
+    $("openaiApiKey").oninput = (e) => { s.openaiApiKey = e.target.value.trim(); save(); };
     $("openaiModel").onchange = (e) => { s.openaiModel = e.target.value; save(); };
     $("openaiVisionModel").onchange = (e) => { s.openaiVisionModel = e.target.value; save(); };
+    $("anthropicApiKey").oninput = (e) => { s.anthropicApiKey = e.target.value.trim(); s.apiKey = s.anthropicApiKey; save(); };
     $("anthropicModel").onchange = (e) => { s.anthropicModel = e.target.value; s.model = e.target.value; save(); };
-    $("aiGatewayUrl").oninput = (e) => { s.aiGatewayUrl = e.target.value.trim(); save(); };
-    $("aiGatewayToken").oninput = (e) => { s.aiGatewayToken = e.target.value.trim(); save(); };
     $("aiTest").onclick = async (e) => {
       const r = $("aiTestR"); e.target.disabled = true; r.textContent = "測試中…"; r.style.color = "var(--text-2)";
-      try { await FL.testKey(); r.textContent = "✓ 連線成功"; r.style.color = "var(--accent)"; }
+      try { const result = await FL.testKey(); r.textContent = `✓ ${result.provider === "openai" ? "OpenAI" : "Claude"} 連線成功`; r.style.color = "var(--accent)"; }
       catch (err) { r.textContent = err.message; r.style.color = "var(--danger)"; }
       e.target.disabled = false;
     };
@@ -729,10 +776,10 @@ window.FL = window.FL || {};
   function today() { return FL.localDateKey(new Date().toISOString()); }
   function exportJSON() { download(`fitlog-backup-${today()}.json`, JSON.stringify(FL.exportData(), null, 2), "application/json"); ui.showToast("✓ 已匯出（不含 API Key）"); }
   function exportCSV() {
-    const rows = [["date","exercise_zh","exercise_en","muscle_group","unilateral","set_index","weight_kg","reps","set_type"]];
+    const rows = [["date","exercise_zh","exercise_en","muscle_group","unilateral","weight_input_mode","set_index","weight_kg_total","weight_kg_per_side","reps","set_type"]];
     for (const w of FL.completedWorkouts())
       for (const en of w.entries) { const ex = exerciseById(en.exerciseId);
-        en.sets.forEach((s,i)=>{ if (!s.completedAt) return; rows.push([w.startTime.slice(0,10), ex?.nameZh||"", ex?.nameEn||"", ex?.muscleGroup||"", ex?.isUnilateral?1:0, i+1, s.weightKg, s.reps, s.setType]); }); }
+        en.sets.forEach((s,i)=>{ if (!s.completedAt) return; rows.push([w.startTime.slice(0,10), ex?.nameZh||"", ex?.nameEn||"", ex?.muscleGroup||"", ex?.isUnilateral?1:0, ex?.weightInputMode||"total", i+1, s.weightKg, ex?.weightInputMode==="perSide"?inputWeightKg(s.weightKg,ex):"", s.reps, s.setType]); }); }
     const csv = "﻿" + rows.map((r)=>r.map((c)=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
     download(`fitlog-${today()}.csv`, csv, "text/csv");
   }
@@ -745,10 +792,12 @@ window.FL = window.FL || {};
         if (!data.exercises || !data.workouts) throw new Error();
         if (confirm(`將以備份取代目前資料（${data.workouts.length} 筆訓練）。目前的 API Key 會保留。確定？`)) {
           const keepKey = FL.db.settings.apiKey;
-          const keepGatewayToken = FL.db.settings.aiGatewayToken;
+          const keepOpenAIKey = FL.db.settings.openaiApiKey;
+          const keepAnthropicKey = FL.db.settings.anthropicApiKey;
           FL.replaceDB(data);
           if (!FL.db.settings.apiKey && keepKey) { FL.db.settings.apiKey = keepKey; save(); }
-          if (!FL.db.settings.aiGatewayToken && keepGatewayToken) { FL.db.settings.aiGatewayToken = keepGatewayToken; save(); }
+          if (!FL.db.settings.openaiApiKey && keepOpenAIKey) { FL.db.settings.openaiApiKey = keepOpenAIKey; save(); }
+          if (!FL.db.settings.anthropicApiKey && keepAnthropicKey) { FL.db.settings.anthropicApiKey = keepAnthropicKey; save(); }
           els.overlay.classList.add("hidden"); ui.renderTab(); ui.renderMiniBar(); ui.showToast("✓ 已還原備份");
         }
       } catch (_) { alert("檔案格式不正確"); }

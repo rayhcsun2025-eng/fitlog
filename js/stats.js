@@ -1,6 +1,6 @@
 /* =====================================================================
    FitLog v2 — 統計 / PR / RM（純函式，操作 FL.db）
-   Volume 含單邊 ×2；1RM 用 Epley 與 Brzycki；週統計、日曆彙總。
+   重量皆為總外部重量；Volume 含單邊次數 ×2；1RM 用 Epley 與 Brzycki。
    ===================================================================== */
 "use strict";
 window.FL = window.FL || {};
@@ -36,7 +36,7 @@ window.FL = window.FL || {};
     return [1, 3, 5, 8, 10].map((r) => ({ rm: r, kg: weightForReps(oneRM, r) }));
   }
 
-  // ---- Volume（含單邊 ×2）----
+  // ---- Volume（weightKg 已統一為總外部重量；單邊動作另以次數 ×2）----
   function unilateralMult(exercise) { return exercise && exercise.isUnilateral ? 2 : 1; }
   function setVolume(set, exercise) {
     if (!set.completedAt || set.setType === "warmup") return 0;

@@ -8,7 +8,7 @@ window.FL = window.FL || {};
 (function (FL) {
   const ui = FL.ui;
   const $ = (id) => document.getElementById(id);
-  const { esc, MUSCLE_GROUPS, GOALS, BODY_STATES, fmtWeight, trimNum, toDisplay, exerciseById, save, uid } = FL;
+  const { esc, MUSCLE_GROUPS, GOALS, BODY_STATES, fmtExerciseWeight, trimNum, toDisplay, exerciseById, save, uid } = FL;
 
   // 排課輸入狀態
   let form = null;
@@ -21,7 +21,7 @@ window.FL = window.FL || {};
     if (!form) form = defaultForm();
     const el = ui.els.view;
     el.innerHTML = `<h1 class="page-title">AI 教練</h1>
-      ${!FL.hasApiKey() ? `<div class="card" style="color:var(--text-2);font-size:13px;line-height:1.7">尚未連接安全 AI Gateway——到「更多 → AI 設定」填入 Gateway URL 與存取碼，即可使用 Claude 或 OpenAI。</div>` : ""}
+      ${!FL.hasApiKey() ? `<div class="card" style="color:var(--text-2);font-size:13px;line-height:1.7">尚未連接 AI——到「更多 → AI 設定」輸入 OpenAI 或 Claude API Key 即可使用。</div>` : ""}
       <div class="card">
         <div class="coach-label">訓練時間</div>
         <div class="seg" id="cMin">${[30,45,60,90].map((m)=>`<button data-min="${m}" class="${form.minutes===m?"on":""}">${m}分</button>`).join("")}</div>
@@ -51,7 +51,7 @@ window.FL = window.FL || {};
   };
 
   async function generatePlan(btn) {
-    if (!FL.hasApiKey()) { alert("請先到「更多 → AI 設定」完成安全 Gateway 設定。"); return; }
+    if (!FL.hasApiKey()) { alert("請先到「更多 → AI 設定」輸入 API Key。"); return; }
     if (form.muscleMode === "pick" && !form.groups.length) { alert("請至少選一個肌群，或改用「AI 決定」。"); return; }
     const input = { minutes: form.minutes, goal: form.goal, bodyState: form.bodyState, freeText: form.freeText,
       muscleMode: form.muscleMode === "pick" ? form.groups : "ai" };
@@ -88,7 +88,7 @@ window.FL = window.FL || {};
           return `<div class="card plan-item">
             <div class="ex-header"><span class="ex-name">${i+1}. ${esc(c.name_zh)}${ex&&ex.isUnilateral?' <span class="uni-badge">單邊</span>':""}<small>${esc(c.name_en)}</small></span>
               ${ex?ui.muscleTag(ex.muscleGroup,true):""}</div>
-            <div class="plan-spec num">${c.sets} 組 × ${esc(String(c.reps))} 次${c.suggested_weight_kg?` · 建議 ${fmtWeight(c.suggested_weight_kg)}`:""}</div>
+            <div class="plan-spec num">${c.sets} 組 × ${esc(String(c.reps))} 次${c.suggested_weight_kg?` · 建議 ${fmtExerciseWeight(c.suggested_weight_kg,ex)}`:""}</div>
             <p class="rep-text">${esc(c.rationale||"")}</p>
             ${it.pool.length>1?`<button class="btn-ghost btn swap-btn" data-swap="${i}">↻ 換一個（${it.idx+1}/${it.pool.length}）</button>`:""}</div>`;
         }).join("")}
@@ -120,7 +120,7 @@ window.FL = window.FL || {};
     return `<h2 class="section-title">AI 教練分析（Weekly Report）</h2>
       <button class="btn btn-primary" id="aiGenNow">✦ 產生本週分析</button>
       <button class="btn btn-card" id="aiGenPrev">產生上週分析</button>
-      ${!FL.hasApiKey()?`<div class="card" style="margin-top:10px;color:var(--text-2);font-size:12.5px;line-height:1.7">尚未連接安全 AI Gateway——到「更多 → AI 設定」完成連線即可使用。</div>`:""}
+      ${!FL.hasApiKey()?`<div class="card" style="margin-top:10px;color:var(--text-2);font-size:12.5px;line-height:1.7">尚未連接 AI——到「更多 → AI 設定」輸入 API Key 即可使用。</div>`:""}
       ${reports.length?`<div style="margin-top:10px">`+reports.map((r)=>`<button class="list-item" data-report="${r.id}">
         <div class="li-top"><span class="li-title">週報 ${r.weekStart}</span><span class="li-sub">${FL.aiModelLabel(r.model)}</span></div>
         <div class="li-sub">${esc(r.content?.headline||"")}</div></button>`).join("")+`</div>`:""}`;
@@ -132,7 +132,7 @@ window.FL = window.FL || {};
   };
 
   async function genReport(refDate, btn) {
-    if (!FL.hasApiKey()) { alert("請先到「更多 → AI 設定」完成安全 Gateway 設定。"); return; }
+    if (!FL.hasApiKey()) { alert("請先到「更多 → AI 設定」輸入 API Key。"); return; }
     const orig = btn.textContent; btn.disabled = true; btn.textContent = "✦ 分析中…（約 30 秒）";
     try {
       const res = await FL.generateWeeklyReport(refDate);
