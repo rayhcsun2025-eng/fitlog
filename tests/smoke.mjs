@@ -90,4 +90,4 @@ assert.equal(missingConfig.status, 503);
 const unauthorized = await worker.fetch(new Request("https://gateway.test/", { method: "POST" }), { GATEWAY_TOKEN: "secret" });
 assert.equal(unauthorized.status, 401);
 
-console.log("FitLog v3.3 smoke tests passed");
+console.log("FitLog v3.4 smoke tests passed");

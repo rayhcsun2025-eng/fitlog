@@ -222,7 +222,8 @@ window.FL = window.FL || {};
     ui.els.modal.innerHTML = `<div class="modal-sheet"><div class="ov-header static-head">
       <button class="icon-btn" id="ibCancel">取消</button><span class="ov-title">新增 InBody</span><button class="icon-btn accent" id="ibSave">儲存</button></div>
       <div class="privacy-callout"><span>REVIEW FIRST</span>可先讓 AI 讀取報告；辨識結果必須由你確認後才會存入紀錄。</div>
-      <div class="card form-card"><div class="form-row"><label>報告照片</label><input type="file" id="ibFile" accept="image/jpeg,image/png,image/webp" capture="environment"></div>
+      <div class="card form-card"><div class="form-row"><label>InBody 圖片</label><input type="file" id="ibFile" accept="image/*" aria-label="拍照或從相簿選擇 InBody 圖片"></div>
+        <div class="upload-source-hint">可直接拍照，也可從相簿或檔案選擇既有圖片。</div>
         <button class="btn btn-card scan-btn" id="ibScan">▣ AI 讀取報告</button><div class="hint" id="ibStatus"></div>
         <div class="form-row"><label>日期</label><input class="form-input inline-input" id="ibDate" type="date" value="${localDate()}"></div>
         ${numberRow("ibWeight","體重","kg",null)}${numberRow("ibMuscle","骨骼肌","kg",null)}
@@ -232,6 +233,11 @@ window.FL = window.FL || {};
         <div class="form-row no-border"><label>備註</label><input class="form-input inline-input wide" id="ibNotes" placeholder="選填"></div></div></div>`;
     let scanBlob = null;
     $("ibCancel").onclick = ui.closeModal;
+    $("ibFile").onchange = () => {
+      const file = $("ibFile").files[0];
+      scanBlob = null;
+      $("ibStatus").textContent = file ? `已選擇：${file.name || "InBody 圖片"}` : "";
+    };
     $("ibScan").onclick = async (event) => {
       const file = $("ibFile").files[0]; if (!file) return alert("請先選擇 InBody 報告照片");
       if (!FL.hasApiKey()) return alert("請先到「更多 → AI 設定」輸入 API Key。");
