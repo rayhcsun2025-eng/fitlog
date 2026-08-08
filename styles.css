@@ -695,7 +695,21 @@ textarea.form-input { resize: none; line-height: 1.6; }
 .privacy-callout { border:1px solid rgba(57,242,194,.18); border-radius:15px; padding:12px 13px; margin-bottom:12px; color:var(--text-2); background:rgba(57,242,194,.06); font-size:11px; line-height:1.55; }
 .privacy-callout span { display:block; color:var(--accent); font:800 9px var(--font-rounded); letter-spacing:1.3px; margin-bottom:4px; }.privacy-callout.sensitive{border-color:rgba(255,214,10,.22);background:rgba(255,214,10,.06)}.privacy-callout.sensitive span{color:var(--warn)}
 .static-head { position:static!important;background:none!important;padding:0 0 8px!important }.form-card .form-row:last-child,.no-border{border-bottom:0!important}.inline-unit{display:flex;align-items:center;gap:7px;width:46%;}.inline-unit .form-input{text-align:right}.inline-unit span{color:var(--text-3);font-size:11px}.inline-input{max-width:58%;}.inline-input.wide{max-width:68%}.scan-btn{margin:10px 0 5px}.consent-check{display:flex;align-items:flex-start;gap:10px;font-size:12px;line-height:1.6;color:var(--text-2);margin:16px 2px}.consent-check input{width:19px;height:19px;flex-shrink:0;margin-top:1px}
-.upload-source-hint { margin:9px 2px 3px; color:var(--text-2); font-size:11px; line-height:1.5; }
+.upload-source-label { color:var(--text-2); font-size:12px; margin:1px 1px 9px; }
+.upload-source-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:12px; }
+.upload-source-card {
+  min-height:104px; padding:13px 11px; border-radius:15px; cursor:pointer; position:relative; overflow:hidden;
+  display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+  background:linear-gradient(145deg,rgba(57,242,194,.09),rgba(12,21,30,.94));
+  border:1px solid rgba(57,242,194,.17); transition:transform var(--dur) ease,border-color var(--dur) ease;
+}
+.upload-source-card.camera { background:linear-gradient(145deg,rgba(139,124,255,.11),rgba(12,21,30,.94)); border-color:rgba(139,124,255,.2); }
+.upload-source-card:active { transform:scale(.97); border-color:rgba(57,242,194,.38); }
+.upload-source-card input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.upload-source-card > span { color:var(--accent); font:800 8px/1 var(--font-rounded); letter-spacing:1.3px; margin-bottom:10px; }
+.upload-source-card.camera > span { color:#aa9fff; }
+.upload-source-card strong { font-size:13px; margin-bottom:5px; }
+.upload-source-card small { color:var(--text-3); font-size:9.5px; line-height:1.4; }
 
 @media (max-width: 430px) {
   .readiness-hero { grid-template-columns:105px 1fr; gap:12px; padding:17px; }

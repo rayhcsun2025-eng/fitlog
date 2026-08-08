@@ -1,5 +1,5 @@
-/* FitLog Service Worker — 離線快取（cache-first） */
-const CACHE = "fitlog-v13";
+/* FitLog Service Worker — 程式檔 network-first，圖片 cache-first */
+const CACHE = "fitlog-v14";
 const ASSETS = [
   "./", "./index.html", "./styles.css", "./manifest.webmanifest",
   "./js/data.js", "./js/stats.js", "./js/ai.js", "./js/ui.js", "./js/coach.js", "./js/body.js", "./js/main.js",
@@ -19,6 +19,17 @@ self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
   if (url.origin !== location.origin) return; // 不攔截 Claude API 等外部請求
+  const isAppCode = e.request.mode === "navigate" || ["script", "style"].includes(e.request.destination);
+  if (isAppCode) {
+    e.respondWith(
+      fetch(e.request).then((res) => {
+        if (res.ok) caches.open(CACHE).then((c) => c.put(e.request, res.clone()));
+        return res;
+      }).catch(async () => (await caches.match(e.request)) ||
+        (e.request.mode === "navigate" ? (await caches.match("./index.html")) : Response.error()))
+    );
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then((cached) => {
       const fetched = fetch(e.request).then((res) => {

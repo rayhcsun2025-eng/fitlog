@@ -21,7 +21,8 @@
 
   // Service Worker（離線）
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+      .then((registration) => registration.update()).catch(() => {});
   }
 
   FL.ui.renderTab();
