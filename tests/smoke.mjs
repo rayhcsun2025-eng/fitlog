@@ -87,6 +87,23 @@ assert.equal(sanitizedBody.visceralFatAreaCm2, 92);
 assert.equal(sanitizedBody.segmentalLean.leftArm.massKg, 3.1);
 assert.equal(sanitizedBody.segmentalLean.rightArm.massKg, null);
 assert.equal(sanitizedBody.segmentalLean.trunk.sufficiencyPct, null);
+function countSchemaUnions(value) {
+  if (!value || typeof value !== "object") return 0;
+  const own = (Array.isArray(value.type) || Array.isArray(value.anyOf)) ? 1 : 0;
+  return own + Object.values(value).reduce((sum, child) => sum + countSchemaUnions(child), 0);
+}
+assert.equal(countSchemaUnions(FL.inBodySchema), 0);
+const missingScan = FL.scanContentToRecord({
+  weight_kg: -1, skeletal_muscle_kg: -1, body_fat_pct: -1, fat_mass_kg: -1, bmi: -1,
+  visceral_fat_level: -1, visceral_fat_area_cm2: -1, bmr_kcal: -1,
+  segmental_lean: {
+    left_arm: { mass_kg: -1, sufficiency_pct: -1 }, right_arm: { mass_kg: -1, sufficiency_pct: -1 },
+    trunk: { mass_kg: -1, sufficiency_pct: -1 }, left_leg: { mass_kg: -1, sufficiency_pct: -1 },
+    right_leg: { mass_kg: -1, sufficiency_pct: -1 },
+  },
+});
+assert.equal(missingScan.weightKg, null);
+assert.equal(missingScan.segmentalLean, null);
 
 migrated.settings.aiProvider = "anthropic";
 globalThis.fetch = async (url, options) => {
@@ -107,4 +124,4 @@ assert.equal(missingConfig.status, 503);
 const unauthorized = await worker.fetch(new Request("https://gateway.test/", { method: "POST" }), { GATEWAY_TOKEN: "secret" });
 assert.equal(unauthorized.status, 401);
 
-console.log("FitLog v3.7 smoke tests passed");
+console.log("FitLog v3.8 smoke tests passed");

@@ -220,19 +220,25 @@ window.FL = window.FL || {};
 
   const SEGMENT_SCHEMA = {
     type: "object", additionalProperties: false, required: ["mass_kg", "sufficiency_pct"],
-    properties: { mass_kg: { type: ["number","null"] }, sufficiency_pct: { type: ["number","null"] } },
+    properties: {
+      mass_kg: { type: "number", description: "無法確認時回傳 -1" },
+      sufficiency_pct: { type: "number", description: "無法確認時回傳 -1" },
+    },
   };
   const INBODY_SCHEMA = {
     type: "object", additionalProperties: false,
     required: ["scan_date","mass_unit_detected","weight_kg","skeletal_muscle_kg","body_fat_pct","fat_mass_kg","bmi","visceral_fat_level","visceral_fat_area_cm2","bmr_kcal","segmental_lean","notes"],
     properties: {
-      scan_date: { type: ["string","null"] },
+      scan_date: { type: "string", description: "YYYY-MM-DD；無法確認時回傳空字串" },
       mass_unit_detected: { type: "string", enum: ["kg","lb","mixed","unknown"] },
-      weight_kg: { type: ["number","null"] },
-      skeletal_muscle_kg: { type: ["number","null"] }, body_fat_pct: { type: ["number","null"] },
-      fat_mass_kg: { type: ["number","null"] }, bmi: { type: ["number","null"] },
-      visceral_fat_level: { type: ["number","null"] }, visceral_fat_area_cm2: { type: ["number","null"] },
-      bmr_kcal: { type: ["number","null"] },
+      weight_kg: { type: "number", description: "無法確認時回傳 -1" },
+      skeletal_muscle_kg: { type: "number", description: "無法確認時回傳 -1" },
+      body_fat_pct: { type: "number", description: "無法確認時回傳 -1" },
+      fat_mass_kg: { type: "number", description: "無法確認時回傳 -1" },
+      bmi: { type: "number", description: "無法確認時回傳 -1" },
+      visceral_fat_level: { type: "number", description: "無法確認時回傳 -1" },
+      visceral_fat_area_cm2: { type: "number", description: "無法確認時回傳 -1" },
+      bmr_kcal: { type: "number", description: "無法確認時回傳 -1" },
       segmental_lean: {
         type: "object", additionalProperties: false,
         required: ["left_arm","right_arm","trunk","left_leg","right_leg"],
@@ -243,12 +249,13 @@ window.FL = window.FL || {};
   };
   const INBODY_SYSTEM = `你是身體組成報告的資料擷取助手。只讀取圖片中清楚可見且能確認欄位與單位的數字，不猜測，不提供醫療診斷。
 規則：
-1. 日期用 YYYY-MM-DD。無法確認就回傳 null。
-2. 質量若明確標示 lb/lbs/pound，使用 1 lb = 0.453592 kg 換算後回傳 kg；若單位不明，該質量欄位回傳 null。百分比不可當成 kg。
-3. Segmental Lean Analysis 是分段瘦體重，不是純骨骼肌。擷取左手臂、右手臂、軀幹、左下肢、右下肢的質量 kg 與報告上的參考／充足率 %。
-4. 內臟脂肪「等級」與「面積 cm²」必須分開，不可互填。
-5. 明顯不合理或疑似單位誤判的值回傳 null：體重 20–400kg、骨骼肌 5–120kg、體脂 2–75%、脂肪量 0.2–250kg、BMI 10–80、內臟脂肪等級 1–30、面積 1–400cm²、BMR 500–5000kcal；單側手臂 0.1–30kg、軀幹 1–100kg、單側腿 0.5–60kg、分段參考率 30–250%。
-6. 不同欄位互相矛盾或字跡不清時寧可留 null，並在 notes 簡短說明。`;
+1. 日期用 YYYY-MM-DD。無法確認就回傳空字串。
+2. 所有無法確認、缺少或無效的數值欄位一律回傳 -1；不要回傳 null。
+3. 質量若明確標示 lb/lbs/pound，使用 1 lb = 0.453592 kg 換算後回傳 kg；若單位不明，該質量欄位回傳 -1。百分比不可當成 kg。
+4. Segmental Lean Analysis 是分段瘦體重，不是純骨骼肌。擷取左手臂、右手臂、軀幹、左下肢、右下肢的質量 kg 與報告上的參考／充足率 %。
+5. 內臟脂肪「等級」與「面積 cm²」必須分開，不可互填。
+6. 明顯不合理或疑似單位誤判的值回傳 -1：體重 20–400kg、骨骼肌 5–120kg、體脂 2–75%、脂肪量 0.2–250kg、BMI 10–80、內臟脂肪等級 1–30、面積 1–400cm²、BMR 500–5000kcal；單側手臂 0.1–30kg、軀幹 1–100kg、單側腿 0.5–60kg、分段參考率 30–250%。
+7. 不同欄位互相矛盾或字跡不清時寧可回傳 -1，並在 notes 簡短說明。App 會把 -1 轉成空白，不會拿來分析。`;
 
   function scanContentToRecord(content) {
     const c = content || {};
@@ -401,6 +408,6 @@ window.FL = window.FL || {};
   }
 
   Object.assign(FL, {
-    sanitizeBodyRecord, scanContentToRecord,
+    sanitizeBodyRecord, scanContentToRecord, inBodySchema: INBODY_SCHEMA,
   });
 })(window.FL);
