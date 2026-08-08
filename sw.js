@@ -1,5 +1,5 @@
 /* FitLog Service Worker — 程式檔 network-first，圖片 cache-first */
-const CACHE = "fitlog-v14";
+const CACHE = "fitlog-v16";
 const ASSETS = [
   "./", "./index.html", "./styles.css", "./manifest.webmanifest",
   "./js/data.js", "./js/stats.js", "./js/ai.js", "./js/ui.js", "./js/coach.js", "./js/body.js", "./js/main.js",

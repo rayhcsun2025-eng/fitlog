@@ -1,6 +1,6 @@
 # FitLog v3 — Performance OS（Web App / PWA）
 
-繁體中文個人健身 App：今日訓練中控台、Claude／OpenAI 排課、RM 分析、InBody 與進度照片、AI 身體分析。訓練資料存在本機，可安裝為 PWA 離線使用；個人模式可直接輸入自己的 OpenAI／Claude API Key。
+繁體中文個人健身 App：今日訓練中控台、Claude／OpenAI 排課、RM 分析、InBody 與 AI 身體分析。訓練資料存在本機，可安裝為 PWA 離線使用；個人模式可直接輸入自己的 OpenAI／Claude API Key。
 
 ## v3 重點
 
@@ -9,8 +9,9 @@
 - **雙 AI**：Anthropic Claude、OpenAI Responses API 與自動選擇模式；所有回傳共用 JSON Schema。
 - **直接 API Key**：在設定頁輸入 OpenAI／Claude Key，瀏覽器直接呼叫所選供應商；Key 不會放進匯出備份。
 - **身體與目標**：增肌／減脂／體態重組／力量目標、InBody 數值與趨勢。
-- **照片分析**：照片先在裝置縮圖並移除 EXIF，原始照片存 IndexedDB；使用者明確同意後才連同 InBody 與訓練摘要送給 AI。
 - **InBody 圖片來源**：明確分成「相簿／檔案」與「直接拍照」兩個入口，不再讓手機自行決定來源。
+- **跨機器資料防呆**：只換算報告上明確標示的 lb；單位不明、欄位矛盾或超出寬鬆合理範圍的數字一律留空，不送進後續 AI 結論。
+- **五區分段分析**：支援左／右手臂、軀幹、左／右下肢的分段瘦體重 kg 與參考率 %，並顯示左右差；瘦體重包含體水分，不標示為純肌肉量。
 - **重量統一**：雙手各拿一個負重的動作以「每手」輸入、儲存時自動合併為總重量（10 + 10 = 20 kg）；單手輪流動作維持單手重量並由 Volume 計算雙側次數。
 - **資料相容**：沿用 `fitlog.v1`，schema v2 → v5 不刪除原有訓練；舊的雙手啞鈴紀錄會一次性正規化為總重量。
 
@@ -27,7 +28,7 @@ fitlog/
     ├── ai.js      # OpenAI / Claude 直接 Client、排課引擎、週報 payload、偏好學習
     ├── ui.js      # 今日中控台/日曆/訓練/更多、進行中訓練、休息計時
     ├── coach.js   # AI 教練分頁（排課）＋ 週報渲染
-    ├── body.js    # 身體目標、IndexedDB 照片、InBody 與多模態分析
+    ├── body.js    # 身體目標、InBody 圖片辨識與 AI 數據分析
     └── main.js    # 進入點
 ```
 
@@ -63,4 +64,4 @@ fitlog/
 
 改檔後上傳覆蓋到 GitHub → 手機把 App 完全關閉再開。程式檔採 network-first，連網時會優先抓新版，離線時才使用快取。
 
-版本 3.5（Web，InBody 雙入口＋行動裝置快取修正）
+版本 3.7（Web，移除體態照片紀錄＋保留 InBody 圖片辨識）

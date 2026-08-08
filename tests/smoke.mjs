@@ -71,6 +71,23 @@ assert.equal((await FL.testKey()).provider, "openai");
 const tinySchema = { type: "object", additionalProperties: false, required: ["answer"], properties: { answer: { type: "string" } } };
 assert.equal((await FL.structured("system", "input", tinySchema)).content.answer, "ok");
 
+FL.ui = {};
+await import("../js/body.js");
+const sanitizedBody = FL.sanitizeBodyRecord({
+  weightKg: 680, skeletalMuscleKg: 36.2, bodyFatPct: 160, visceralFatAreaCm2: 92,
+  segmentalLean: {
+    leftArm: { massKg: 3.1, sufficiencyPct: 104 }, rightArm: { massKg: 88, sufficiencyPct: 101 },
+    trunk: { massKg: 27.4, sufficiencyPct: 800 }, leftLeg: { massKg: 9.2, sufficiencyPct: 98 },
+  },
+});
+assert.equal(sanitizedBody.weightKg, null);
+assert.equal(sanitizedBody.skeletalMuscleKg, 36.2);
+assert.equal(sanitizedBody.bodyFatPct, null);
+assert.equal(sanitizedBody.visceralFatAreaCm2, 92);
+assert.equal(sanitizedBody.segmentalLean.leftArm.massKg, 3.1);
+assert.equal(sanitizedBody.segmentalLean.rightArm.massKg, null);
+assert.equal(sanitizedBody.segmentalLean.trunk.sufficiencyPct, null);
+
 migrated.settings.aiProvider = "anthropic";
 globalThis.fetch = async (url, options) => {
   assert.equal(url, "https://api.anthropic.com/v1/messages");
@@ -90,4 +107,4 @@ assert.equal(missingConfig.status, 503);
 const unauthorized = await worker.fetch(new Request("https://gateway.test/", { method: "POST" }), { GATEWAY_TOKEN: "secret" });
 assert.equal(unauthorized.status, 401);
 
-console.log("FitLog v3.5 smoke tests passed");
+console.log("FitLog v3.7 smoke tests passed");

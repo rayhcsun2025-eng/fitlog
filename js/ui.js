@@ -578,7 +578,7 @@ window.FL = window.FL || {};
         </div>
       </section>
 
-      <footer class="system-footer"><span>FITLOG OS</span><strong>v3.5</strong><i></i><span>LOCAL-FIRST</span><i></i><span>STORAGE: DEVICE</span></footer>
+      <footer class="system-footer"><span>FITLOG OS</span><strong>v3.7</strong><i></i><span>LOCAL-FIRST</span><i></i><span>STORAGE: DEVICE</span></footer>
     </div>`;
     $("mCalendar").onclick = () => ui.activateTab("calendar");
     $("mBody").onclick = () => ui.activateTab("body");
